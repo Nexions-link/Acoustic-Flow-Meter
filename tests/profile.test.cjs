@@ -351,3 +351,36 @@ test('quick start remains disabled until profile and flow are ready',async()=>{
   assert.equal(app.element('autoStart').hidden,false);
   assert.equal(app.element('autoStart').disabled,true);
 });
+
+test('flow input sits immediately under tabs before quick actions and above results',()=>{
+  const tabsEnd=html.indexOf('</nav>');
+  const flowPos=html.indexOf('id="flow"');
+  const micPos=html.indexOf('id="microphone"');
+  const autoPos=html.indexOf('id="autoStart"');
+  const resultsPos=html.indexOf('aria-label="Результаты измерений"');
+  assert.ok(tabsEnd>=0&&tabsEnd<flowPos);
+  assert.ok(flowPos<micPos&&micPos<resultsPos);
+  assert.ok(flowPos<autoPos&&autoPos<resultsPos);
+  assert.equal((html.match(/id="flow"/g)||[]).length,1);
+  assert.ok(html.slice(tabsEnd,resultsPos).includes('class="quick-flow"'));
+  assert.equal(html.includes('aria-label="Параметры продувки"'),false);
+});
+test('compact top flow retains per-tab input persistence and disables during an active cycle',()=>{
+  const app=boot();
+  app.element('flow').value='1,5';
+  app.callback('flow','input')();
+  assert.equal(app.store.get('acoustic-mixture-counter-v1-flow'),'1,5');
+  app.callback('tab3','click')();
+  assert.equal(app.element('flow').value,'');
+  app.element('flow').value='2,5';
+  app.callback('flow','input')();
+  assert.equal(app.store.get('acoustic-mixture-counter-v1-flow-tab-3'),'2,5');
+  app.callback('manualStart','click')();
+  assert.equal(app.element('flow').disabled,true);
+  app.callback('manualStop','click')();
+  assert.equal(app.element('flow').disabled,false);
+  app.callback('tab1','click')();
+  assert.equal(app.element('flow').value,'1,5');
+  app.callback('tab3','click')();
+  assert.equal(app.element('flow').value,'2,5');
+});
