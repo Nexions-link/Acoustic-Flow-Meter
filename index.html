@@ -114,7 +114,7 @@
     <div class="meter-top"><span>Похожесть на звук прибора</span><span id="scoreLabel">—</span></div>
     <div class="meter" role="progressbar" aria-label="Похожесть на рабочий звук" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="scoreMeter"><div class="meterfill" id="scoreBar"></div></div>
     <div class="range-line"><label for="sensitivity">Порог срабатывания</label><input id="sensitivity" type="range" min="40" max="85" value="58" step="1"><span class="range-value" id="sensitivityLabel">58%</span></div>
-    <p class="footnote">Более высокий порог уменьшает ложные срабатывания, но может пропускать тихое жужжание. Запуск подтверждается через 0,4 с устойчивого звука, остановка — после 0,7 с его отсутствия; времена корректируются на задержку подтверждения.</p>
+    <p class="footnote"><strong>Фильтр коротких сигналов:</strong> жужжание длительностью 10 с или меньше не учитывается. Если звук непрерывно длится более 10 с, объём рассчитывается <strong>с самого начала</strong> рабочего жужжания. Короткий предварительный сигнал (≈0,67 с) отсекается при различимой паузе от 0,2 с. Устойчивость включения — 0,4 с, остановка подтверждённого цикла — 0,7 с.</p>
   </section>
 
   <section class="panel" aria-label="Управление учётом">
@@ -142,11 +142,11 @@
   const STORAGE='acoustic-mixture-counter-v1';
   const storageGet=key=>{try{return localStorage.getItem(key);}catch(_){return null;}};
   const storageSet=(key,value)=>{try{localStorage.setItem(key,value);return true;}catch(_){return false;}};
-  const MS_ON=400, MS_OFF=700, CAPTURE_MS=2000, FRAMES_PER_SECOND=16;
+  const MS_ON=400, MS_OFF=700, MS_PENDING_OFF=200, MIN_AUTO_CYCLE_MS=10000, CAPTURE_MS=2000, FRAMES_PER_SECOND=16;
   let stream=null, context=null, analyser=null, source=null, values=null;
   let offProfile=null, onProfile=null, selectedBands=[];
   let monitoring=false, capture=null, loopHandle=null, screenLock=null;
-  let onCandidate=null, offCandidate=null, activeCycle=null, recentScore=0;
+  let onCandidate=null, offCandidate=null, pendingCycle=null, activeCycle=null, recentScore=0;
   let cycles=[];
   let lastEvent='';
   const storedFlow = storageGet(STORAGE+'-flow');
@@ -184,11 +184,12 @@
     el.autoStop.disabled=!monitoring;
     el.manualStart.disabled=!!activeCycle||monitoring||isCapturing||!getFlow();
     el.manualStop.disabled=!activeCycle||activeCycle.source!=='manual';
-    el.flow.disabled=!!activeCycle;
+    el.flow.disabled=!!activeCycle||!!pendingCycle;
     el.sensitivity.disabled=!!capture;
   }
   function draw(){
-    const t=totals(), elapsed=activeCycle?Math.max(0,now()-activeCycle.start):0;
+    const t=totals(), elapsed=activeCycle?Math.max(0,(offCandidate===null?now():offCandidate)-activeCycle.start):0;
+    if(pendingCycle)el.status.textContent='Проверка жужжания: '+decimal(Math.max(0,now()-pendingCycle.start)/1000,1)+' / 10,0 с';
     const volume=activeCycle?activeCycle.flow*elapsed/60000:0;
     el.total.textContent=decimal(t.volume+volume);
     el.sumTime.textContent=seconds(t.time+elapsed);
@@ -210,9 +211,9 @@
       el.rows.appendChild(tr);
     });
   }
-  function startCycle(startTime,mode){
-    if(activeCycle||!getFlow())return;
-    activeCycle={start:startTime,flow:getFlow(),source:mode,startedAt:new Date(Date.now()-(now()-startTime)).toISOString()};
+  function startCycle(startTime,mode,fixedFlow=getFlow()){
+    if(activeCycle||!fixedFlow)return;
+    activeCycle={start:startTime,flow:fixedFlow,source:mode,startedAt:new Date(Date.now()-(now()-startTime)).toISOString()};
     setStatus(mode==='auto'?'Продувка обнаружена — идёт учёт':'Ручная продувка — идёт учёт','active');
     refreshButtons();
   }
@@ -224,6 +225,13 @@
     activeCycle=null;
     persist();renderLog();refreshButtons();
     setStatus(monitoring?'Ожидание жужжания':context?'Микрофон подключён':'Микрофон не подключён',monitoring||context?'good':'');
+    if(reason)message(reason);
+  }
+  function discardPending(reason='Короткое жужжание (до 10 с) проигнорировано.'){
+    pendingCycle=null;
+    onCandidate=null;offCandidate=null;
+    setStatus(monitoring?'Ожидание рабочего жужжания':context?'Микрофон подключён':'Микрофон не подключён',monitoring||context?'good':'');
+    refreshButtons();
     if(reason)message(reason);
   }
   function bandPower(indexes){
@@ -303,11 +311,30 @@
     if(!monitoring)return;
     const high=Number(el.sensitivity.value)/100;
     const low=Math.max(0.15,high-0.13);
-    if(!activeCycle){
+    if(!activeCycle&&!pendingCycle){
       if(recentScore>=high){
         if(onCandidate===null)onCandidate=t;
-        if(t-onCandidate>=MS_ON){startCycle(onCandidate,'auto');onCandidate=null;}
+        if(t-onCandidate>=MS_ON){
+          pendingCycle={start:onCandidate,flow:getFlow()};
+          onCandidate=null;offCandidate=null;
+          setStatus('Проверка жужжания','active');
+          refreshButtons();
+        }
       }else onCandidate=null;
+    }else if(pendingCycle){
+      // Во время проверки короткий разрыв в 0,2 с отделяет предварительный писк от рабочего цикла.
+      if(recentScore<low){
+        if(offCandidate===null)offCandidate=t;
+        if(t-offCandidate>=MS_PENDING_OFF){discardPending();return;}
+      }else offCandidate=null;
+      // При подтверждении возвращаем 10 секунд в полный расчёт, не вычитаем их.
+      if(pendingCycle&&offCandidate===null&&t-pendingCycle.start>MIN_AUTO_CYCLE_MS){
+        const c=pendingCycle;
+        pendingCycle=null;
+        startCycle(c.start,'auto',c.flow);
+        refreshButtons();
+        message('Рабочий цикл подтверждён (>10 с). Объём учитывается с начала жужжания.');
+      }
     }else if(activeCycle.source==='auto'){
       if(recentScore<low){
         if(offCandidate===null)offCandidate=t;
@@ -393,19 +420,20 @@
     try{await context.resume();}catch(_){message('Не удалось возобновить микрофон.','warn');return;}
     if(context.state!=='running'){message('Микрофон приостановлен. Повтори запуск.','warn');return;}
     monitoring=true;
-    onCandidate=null;offCandidate=null;
-    setStatus('Ожидание жужжания','good');
-    message('Автоучёт включён: начну отсчёт при устойчивом жужжании.');
+    onCandidate=null;offCandidate=null;pendingCycle=null;
+    setStatus('Ожидание рабочего жужжания','good');
+    message('Автоучёт включён: короткие сигналы до 10 с не учитываются.');
     lockScreen();refreshButtons();
   }
   function stopMonitoring(reason='Автоучёт остановлен.'){
     if(!monitoring)return;
     monitoring=false;
+    if(pendingCycle)discardPending('Сигнал короче 10 с не учтён. '+reason);
     if(activeCycle&&activeCycle.source==='auto'){
       // При принудительной остановке невозможно восстановить недостающие аудиоданные.
       endCycle(now(),reason);
     }else message(reason);
-    onCandidate=null;offCandidate=null;
+    onCandidate=null;offCandidate=null;pendingCycle=null;
     unlockScreen();refreshButtons();
     setStatus(context?'Микрофон подключён':'Микрофон не подключён',context?'good':'');
   }
