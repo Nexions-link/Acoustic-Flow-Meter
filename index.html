@@ -110,6 +110,14 @@
       <div id="onStep" class="step"><span class="check" id="onCheck">○</span><div><strong>Прибор жужжит</strong>Эталон рабочего звука</div></div>
     </div>
     <div class="btnrow narrow"><button id="learnOff" disabled>Записать тишину · 2 с</button><button id="learnOn" disabled>Записать жужжание · 2 с</button></div>
+    <div class="statebox" id="profileStatus" role="status">Сохранённого звукового профиля пока нет. Обучи прибор один раз.</div>
+    <div class="btnrow">
+      <button id="exportProfile" disabled>Скачать профиль</button>
+      <button id="importProfile">Загрузить профиль</button>
+      <button id="clearProfile" class="danger" disabled>Удалить профиль</button>
+      <input id="profileFile" type="file" accept=".json,application/json" class="hidden" aria-label="Выбрать файл звукового профиля">
+    </div>
+    <p class="footnote">После обучения профиль сохраняется автоматически на этом устройстве. Это частотный образец звука, а не аудиозапись. Для резервной копии скачай профиль в JSON; при очистке данных Safari он может исчезнуть.</p>
     <div class="statebox" id="help">Включи микрофон, запиши фон при выключенном приборе, затем — звук работающего прибора. Во время записи не разговаривай и держи телефон в одном положении.</div>
     <div class="meter-top"><span>Похожесть на звук прибора</span><span id="scoreLabel">—</span></div>
     <div class="meter" role="progressbar" aria-label="Похожесть на рабочий звук" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="scoreMeter"><div class="meterfill" id="scoreBar"></div></div>
@@ -129,7 +137,7 @@
     <div class="log-header"><h2 style="margin:0">Журнал циклов</h2><div class="log-actions"><button id="downloadCsv">Экспорт CSV</button><button id="reset" class="danger">Сбросить журнал</button></div></div>
     <div id="empty" class="empty">Завершённых циклов пока нет</div>
     <div class="table-scroll"><table id="logTable" class="hidden"><thead><tr><th>№</th><th>Расход, л/мин</th><th>Время, с</th><th>Объём, л</th></tr></thead><tbody id="rows"></tbody></table></div>
-    <p class="footnote">Суммарный объём складывается из всех циклов, даже если расход между ними менялся. Журнал завершённых циклов сохраняется только в этом браузере. Аудиозаписи никуда не передаются и не сохраняются.</p>
+    <p class="footnote">Суммарный объём складывается из всех циклов, даже если расход между ними менялся. Журнал завершённых циклов сохраняется только в этом браузере. Частотный профиль звука сохраняется отдельно; сами аудиозаписи никуда не передаются и не сохраняются.</p>
   </section>
 </div>
 <script>
@@ -138,8 +146,12 @@
   const $ = id => document.getElementById(id);
   const el = Object.fromEntries(['flow','status','statusDot','total','currentTime','sumTime','cycles','currentVolume','cycleFlowInfo',
     'microphone','microphoneOff','learnOff','learnOn','offStep','onStep','offCheck','onCheck','help','scoreLabel','scoreMeter','scoreBar',
-    'sensitivity','sensitivityLabel','autoStart','autoStop','manualStart','manualStop','warning','downloadCsv','reset','empty','logTable','rows'].map(id=>[id,$(id)]));
+    'sensitivity','sensitivityLabel','autoStart','autoStop','manualStart','manualStop','warning','downloadCsv','reset','empty','logTable','rows','profileStatus','exportProfile','importProfile','clearProfile','profileFile'].map(id=>[id,$(id)]));
   const STORAGE='acoustic-mixture-counter-v1';
+  const PROFILE_KEY=STORAGE+'-sound-profile-v1';
+  const PROFILE_FORMAT='acoustic-flow-meter-sound-profile';
+  const PROFILE_VERSION=1;
+  const PROFILE_BANDS=20;
   const storageGet=key=>{try{return localStorage.getItem(key);}catch(_){return null;}};
   const storageSet=(key,value)=>{try{localStorage.setItem(key,value);return true;}catch(_){return false;}};
   const MS_ON=400, MS_OFF=700, MS_PENDING_OFF=200, MIN_AUTO_CYCLE_MS=10000, CAPTURE_MS=2000, FRAMES_PER_SECOND=16;
@@ -149,6 +161,7 @@
   let onCandidate=null, offCandidate=null, pendingCycle=null, activeCycle=null, recentScore=0;
   let cycles=[];
   let lastEvent='';
+  let profileSavedAt=null;
   const storedFlow = storageGet(STORAGE+'-flow');
   if(storedFlow) el.flow.value=storedFlow;
   try {const json=JSON.parse(storageGet(STORAGE+'-cycles')||'[]'); if(Array.isArray(json)) cycles=json.filter(c=>typeof c?.elapsed==='number'&&typeof c?.flow==='number'&&typeof c?.volume==='number'&&Number.isFinite(c.volume)&&c.volume>=0&&c.elapsed>=0).slice(-5000);}catch(_){}
@@ -171,11 +184,68 @@
   const now=()=>performance.now();
   const persist=()=>{if(!storageSet(STORAGE+'-cycles',JSON.stringify(cycles)))message('Не удалось сохранить журнал в этом браузере. Экспортируй CSV.','warn');};
   const message=(s,kind='normal')=>{lastEvent=s;el.help.textContent=s;el.help.style.color=kind==='warn'?'var(--warn)':'var(--text)';};
+  const validSpectrum=a=>Array.isArray(a)&&a.length===PROFILE_BANDS&&a.every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=-160&&n<=80);
+  const validProfile=p=>p&&typeof p==='object'&&p.format===PROFILE_FORMAT&&p.version===PROFILE_VERSION&&validSpectrum(p.off)&&validSpectrum(p.on);
+  const profileReady=()=>!!offProfile&&!!onProfile&&selectedBands.length>=2;
+  function updateTrainingMarks(){
+    for(const [exists,step,check] of [[!!offProfile,el.offStep,el.offCheck],[!!onProfile,el.onStep,el.onCheck]]){
+      step.classList.toggle('done',exists);
+      check.textContent=exists?'✓':'○';
+    }
+  }
+  function updateProfileUI(){
+    el.profileStatus.textContent=profileReady()&&profileSavedAt
+      ?'Звуковой профиль сохранён на этом устройстве: '+new Date(profileSavedAt).toLocaleString('ru-RU')+'. Повторная запись не требуется.'
+      :profileReady()?'Профиль обучен, но не сохранён. Скачай резервную копию.':'Звуковой профиль не готов. Запиши образцы тишины и жужжания.';
+  }
+  function profilePayload(savedAt=new Date().toISOString()){
+    return {format:PROFILE_FORMAT,version:PROFILE_VERSION,savedAt,off:offProfile.slice(),on:onProfile.slice()};
+  }
+  function saveProfile(){
+    if(!profileReady())return false;
+    const data=profilePayload();
+    if(!storageSet(PROFILE_KEY,JSON.stringify(data))){
+      profileSavedAt=null;
+      updateProfileUI();
+      message('Браузер не разрешил сохранить профиль. Нажми «Скачать профиль», чтобы не потерять обучение.','warn');
+      return false;
+    }
+    profileSavedAt=data.savedAt;
+    updateProfileUI();
+    message('Звуковой профиль сохранён автоматически. При следующем открытии обучение не потребуется.');
+    return true;
+  }
+  function activateProfile(data){
+    if(!validProfile(data))return false;
+    const prev={off:offProfile,on:onProfile,bands:selectedBands,savedAt:profileSavedAt};
+    offProfile=data.off.slice();
+    onProfile=data.on.slice();
+    rebuildModel(false);
+    if(!profileReady()){
+      offProfile=prev.off;onProfile=prev.on;selectedBands=prev.bands;profileSavedAt=prev.savedAt;
+      updateTrainingMarks();updateProfileUI();
+      return false;
+    }
+    profileSavedAt=typeof data.savedAt==='string'&&Number.isFinite(Date.parse(data.savedAt))?data.savedAt:new Date().toISOString();
+    updateTrainingMarks();updateProfileUI();
+    return true;
+  }
+  function restoreProfile(){
+    const raw=storageGet(PROFILE_KEY);
+    if(!raw){updateProfileUI();return;}
+    try{
+      if(!activateProfile(JSON.parse(raw)))throw Error('Invalid profile');
+      message('Сохранённый звуковой профиль восстановлен. Включи микрофон и начни автоучёт.');
+    }catch(_){
+      updateProfileUI();
+      message('Сохранённый звуковой профиль повреждён или несовместим. Запиши образцы заново либо импортируй резервную копию.','warn');
+    }
+  }
   function setStatus(label,cls='') {el.status.textContent=label;el.statusDot.className='dot'+(cls?' '+cls:'');}
   function refreshButtons(){
     const hasMic=!!context&&!!stream;
     const isCapturing=!!capture;
-    const ready=!!offProfile&&!!onProfile&&selectedBands.length>0;
+    const ready=profileReady();
     el.microphone.disabled=hasMic;
     el.microphoneOff.disabled=!hasMic;
     el.learnOff.disabled=!hasMic||isCapturing||monitoring||!!activeCycle;
@@ -186,6 +256,10 @@
     el.manualStop.disabled=!activeCycle||activeCycle.source!=='manual';
     el.flow.disabled=!!activeCycle||!!pendingCycle;
     el.sensitivity.disabled=!!capture;
+    const profileBusy=monitoring||!!activeCycle||!!pendingCycle||isCapturing;
+    el.exportProfile.disabled=!ready;
+    el.importProfile.disabled=profileBusy;
+    el.clearProfile.disabled=profileBusy&&true||(!ready&&!storageGet(PROFILE_KEY));
   }
   function draw(){
     const t=totals(), elapsed=activeCycle?Math.max(0,(offCandidate===null?now():offCandidate)-activeCycle.start):0;
@@ -256,7 +330,7 @@
     analyser.getFloatFrequencyData(values);
     return bandPower(bands);
   }
-  function rebuildModel(){
+  function rebuildModel(shouldSave=true){
     if(!offProfile||!onProfile){selectedBands=[];return;}
     const diffs=offProfile.map((base,i)=>({i,diff:onProfile[i]-base}));
     selectedBands=diffs.filter(x=>x.diff>=6).sort((a,b)=>b.diff-a.diff).slice(0,12);
@@ -265,7 +339,8 @@
       message('Образцы слишком похожи. Поднеси микрофон ближе к прибору и повтори обучение в тишине и при работе.','warn');
       return;
     }
-    message('Обучение завершено. Теперь введи расход и нажми «Начать автоучёт».');
+    if(shouldSave)saveProfile();
+    else message('Звуковой профиль восстановлен. Можно начинать учёт.');
   }
   function scoreFor(curr){
     if(selectedBands.length<2)return 0;
@@ -286,6 +361,7 @@
       capture.frames.push(spectrum);
       if(t-capture.start>=CAPTURE_MS){
         const avg=spectrum.map((_,i)=>capture.frames.reduce((sum,frame)=>sum+frame[i],0)/capture.frames.length);
+        const oldOff=offProfile,oldOn=onProfile;
         if(capture.kind==='off'){
           offProfile=avg;
           el.offStep.classList.add('done');el.offCheck.textContent='✓';
@@ -296,7 +372,13 @@
           message('Звук работающего прибора записан.');
         }
         capture=null;
-        rebuildModel();refreshButtons();
+        rebuildModel();
+        if(offProfile&&onProfile&&!profileReady()&&oldOff&&oldOn){
+          offProfile=oldOff;onProfile=oldOn;
+          rebuildModel(false);
+          message('Новый образец не подошёл. Предыдущий звуковой профиль сохранён.','warn');
+        }
+        updateTrainingMarks();updateProfileUI();refreshButtons();
       }else{
         message('Идёт запись: '+(capture.kind==='off'?'прибор выключен':'прибор жужжит')+' · '+Math.ceil((CAPTURE_MS-(t-capture.start))/1000)+' с');
       }
@@ -372,7 +454,7 @@
       context.addEventListener('statechange',()=>{if(context&&context.state!=='running'&&monitoring)interrupt('Аудиосеанс приостановлен системой. Учёт остановлен.');});
       if(!loopHandle)loopHandle=requestAnimationFrame(processFrame);
       setStatus('Микрофон подключён','good');
-      message('Микрофон подключён. Запиши оба образца звука.');
+      message(profileReady()?'Микрофон подключён. Сохранённый профиль готов, можно начинать автоучёт.':'Микрофон подключён. Запиши оба образца звука.');
     }catch(err){
       console.error(err);
       if(stream)stream.getTracks().forEach(track=>track.stop());
@@ -444,6 +526,45 @@
     setStatus('Учёт прерван','bad');
     refreshButtons();
   }
+  el.exportProfile.addEventListener('click',()=>{
+    if(!profileReady())return;
+    const data=profilePayload(profileSavedAt||new Date().toISOString());
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='acoustic-flow-meter-profile.json';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    message('Резервная копия профиля скачана. Сохрани файл в «Файлы» на iPhone.');
+  });
+  el.importProfile.addEventListener('click',()=>{if(!el.importProfile.disabled)el.profileFile.click();});
+  el.profileFile.addEventListener('change',async()=>{
+    const file=el.profileFile.files?.[0];
+    el.profileFile.value='';
+    if(!file||monitoring||activeCycle||pendingCycle||capture)return;
+    try{
+      if(file.size>32768)throw Error('File too large');
+      const data=JSON.parse(await file.text());
+      if(!activateProfile(data))throw Error('Invalid profile');
+      const imported=profilePayload();
+      if(!storageSet(PROFILE_KEY,JSON.stringify(imported))){
+        profileSavedAt=null;updateProfileUI();
+        message('Профиль загружен, но браузер не сохранил его. Скачай резервную копию.','warn');
+      }else{
+        profileSavedAt=imported.savedAt;updateProfileUI();
+        message('Звуковой профиль импортирован и сохранён. Повторное обучение не требуется.');
+      }
+      refreshButtons();
+    }catch(_){message('Не удалось загрузить профиль. Выбери JSON-файл резервной копии этого приложения.','warn');}
+  });
+  el.clearProfile.addEventListener('click',()=>{
+    if(monitoring||activeCycle||pendingCycle||capture)return;
+    if(!window.confirm('Удалить сохранённый звуковой профиль? Журнал продувок останется.'))return;
+    try{localStorage.removeItem(PROFILE_KEY);}catch(_){message('Не удалось удалить данные профиля из браузера.','warn');return;}
+    offProfile=null;onProfile=null;selectedBands=[];profileSavedAt=null;
+    updateTrainingMarks();updateProfileUI();refreshButtons();
+    message('Звуковой профиль удалён. Для автоучёта потребуется новое обучение.');
+  });
   el.microphone.addEventListener('click',micOn);
   el.microphoneOff.addEventListener('click',micOff);
   el.learnOff.addEventListener('click',()=>startCapture('off'));
@@ -487,7 +608,7 @@
   });
   if(!window.isSecureContext){el.warning.textContent='Для автоматического режима требуется открыть страницу через HTTPS (или localhost). Из обычного файла доступ к микрофону на iPhone не гарантируется. Экран должен оставаться включённым.';}
   el.sensitivityLabel.textContent=el.sensitivity.value+'%';
-  renderLog();refreshButtons();requestAnimationFrame(draw);
+  restoreProfile();updateTrainingMarks();renderLog();refreshButtons();requestAnimationFrame(draw);
 })();
 </script>
 </body>
