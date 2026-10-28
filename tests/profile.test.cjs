@@ -384,3 +384,53 @@ test('compact top flow retains per-tab input persistence and disables during an 
   app.callback('tab3','click')();
   assert.equal(app.element('flow').value,'2,5');
 });
+
+test('compact flow input and a single reset report button share top row',()=>{
+  const start=html.indexOf('class="quick-flow"');
+  const end=html.indexOf('</div>',start);
+  const row=html.slice(start,end);
+  assert.ok(row.includes('id="flow"'));
+  assert.ok(row.includes('id="reset"'));
+  assert.ok(row.indexOf('id="flow"')<row.indexOf('id="reset"'));
+  assert.equal((html.match(/id="reset"/g)||[]).length,1);
+  assert.ok(row.includes('Сброс отчёта'));
+  assert.ok(html.indexOf('id="reset"')<html.indexOf('id="microphone"'));
+  assert.ok(html.indexOf('id="reset"')<html.indexOf('aria-label="Результаты измерений"'));
+});
+test('top reset only clears selected tab, leaves flow and sound profile intact',()=>{
+  const store=new Map([
+    [profileKey,JSON.stringify(sampleProfile())],
+    ['acoustic-mixture-counter-v1-cycles',JSON.stringify([{elapsed:10000,flow:60,volume:10}])],
+    ['acoustic-mixture-counter-v1-cycles-tab-2',JSON.stringify([{elapsed:5000,flow:60,volume:5}])],
+    ['acoustic-mixture-counter-v1-flow-tab-2','1,5']
+  ]);
+  const app=boot(store);
+  assert.equal(app.element('reset').disabled,false);
+  app.callback('tab2','click')();
+  assert.equal(app.element('flow').value,'1,5');
+  assert.equal(app.element('reset').disabled,false);
+  app.callback('reset','click')();
+  app.frame(1000);
+  assert.equal(app.element('total').textContent,'0,000');
+  assert.equal(app.element('compensationK').textContent,'1');
+  assert.equal(app.element('reset').disabled,true);
+  assert.equal(app.element('flow').value,'1,5');
+  assert.equal(store.has(profileKey),true);
+  app.callback('tab1','click')();app.frame(1100);
+  assert.equal(app.element('total').textContent,'10,000');
+  assert.equal(app.element('reset').disabled,false);
+});
+test('reset report is unavailable during automatic monitoring',async()=>{
+  const app=boot(new Map([
+    [profileKey,JSON.stringify(sampleProfile())],
+    ['acoustic-mixture-counter-v1-cycles',JSON.stringify([{elapsed:5000,flow:60,volume:5}])]
+  ]));
+  app.element('flow').value='60';
+  await app.callback('microphone','click')();
+  await app.callback('autoStart','click')();
+  assert.equal(app.element('reset').disabled,true);
+  app.callback('reset','click')();
+  assert.equal(JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles')).length,1);
+  app.callback('autoStop','click')();
+  assert.equal(app.element('reset').disabled,false);
+});
