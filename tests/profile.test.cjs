@@ -208,3 +208,108 @@ test('compensation responds to current cycle and journal reset without modifying
   assert.equal(app.element('total').textContent,'0,000');
   assert.equal(app.element('compensationK').textContent,'1');
 });
+
+test('six square numbered tabs exist and begin with independent zero totals',()=>{
+  const app=boot();
+  for(let i=1;i<=6;i++){
+    assert.ok(app.element('tab'+i),'Tab '+i+' should be present');
+    app.callback('tab'+i,'click')();
+    app.frame(2000+i*100);
+    assert.equal(app.element('activeTabNumber').textContent,String(i));
+    assert.equal(app.element('total').textContent,'0,000');
+    assert.equal(app.element('compensationK').textContent,'1');
+    assert.equal(app.element('cycles').textContent,'0');
+  }
+});
+test('each tab has separate flow, measurement journal and coefficient, with original data in tab 1',()=>{
+  const old=[{elapsed:10000,flow:60,volume:10,source:'manual'}];
+  const store=new Map([
+    ['acoustic-mixture-counter-v1-cycles',JSON.stringify(old)],
+    ['acoustic-mixture-counter-v1-flow','60']
+  ]);
+  const app=boot(store);
+  app.frame(1000);
+  assert.equal(app.element('total').textContent,'10,000');
+  assert.equal(app.element('compensationK').textContent,'1,0074');
+  assert.equal(app.element('flow').value,'60');
+  app.callback('tab2','click')();
+  app.frame(2000);
+  assert.equal(app.element('total').textContent,'0,000');
+  assert.equal(app.element('compensationK').textContent,'1');
+  assert.equal(app.element('flow').value,'');
+  app.element('flow').value='120';
+  app.callback('flow','input')();
+  app.setClock(3000);app.callback('manualStart','click')();
+  app.setClock(8000);app.callback('manualStop','click')();
+  app.frame(8100);
+  assert.equal(app.element('total').textContent,'10,000');
+  assert.equal(app.element('compensationK').textContent,'1,0074');
+  assert.equal(app.store.get('acoustic-mixture-counter-v1-flow-tab-2'),'120');
+  assert.equal(JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles-tab-2')).length,1);
+  assert.deepEqual(JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles')),old);
+  app.callback('tab1','click')();app.frame(9000);
+  assert.equal(app.element('flow').value,'60');
+  assert.equal(app.element('total').textContent,'10,000');
+  app.callback('tab3','click')();app.frame(9100);
+  assert.equal(app.element('total').textContent,'0,000');
+  app.callback('tab2','click')();app.frame(9200);
+  assert.equal(app.element('flow').value,'120');
+  assert.equal(app.element('total').textContent,'10,000');
+});
+test('selected tab and all six tab values survive reload while sound profile stays common',()=>{
+  const store=new Map([
+    [profileKey,JSON.stringify(sampleProfile())],
+    ['acoustic-mixture-counter-v1-cycles-tab-4',JSON.stringify([{elapsed:60000,flow:20,volume:20,source:'auto'}])],
+    ['acoustic-mixture-counter-v1-flow-tab-4','20']
+  ]);
+  const app=boot(store);
+  app.callback('tab4','click')();app.frame(2000);
+  assert.equal(app.element('activeTabNumber').textContent,'4');
+  assert.equal(app.element('total').textContent,'20,000');
+  assert.equal(app.element('compensationK').textContent,'1,0148');
+  const fresh=boot(store);fresh.frame(1000);
+  assert.equal(fresh.element('activeTabNumber').textContent,'4');
+  assert.equal(fresh.element('total').textContent,'20,000');
+  assert.equal(fresh.element('flow').value,'20');
+  assert.equal(fresh.element('compensationK').textContent,'1,0148');
+  assert.equal(fresh.element('profileStatus').textContent.includes('сохранён'),true);
+  fresh.callback('tab1','click')();fresh.frame(1100);
+  assert.equal(fresh.element('profileStatus').textContent.includes('сохранён'),true);
+});
+test('tab switching is blocked during automatic monitoring or manual cycle',async()=>{
+  const store=new Map([[profileKey,JSON.stringify(sampleProfile())]]);
+  const app=boot(store);
+  app.element('flow').value='60';
+  await app.callback('microphone','click')();
+  await app.callback('autoStart','click')();
+  app.callback('tab6','click')();
+  assert.equal(app.element('activeTabNumber').textContent,'1');
+  app.callback('autoStop','click')();
+  app.callback('tab6','click')();
+  assert.equal(app.element('activeTabNumber').textContent,'6');
+  app.element('flow').value='60';
+  app.callback('manualStart','click')();
+  app.callback('tab5','click')();
+  assert.equal(app.element('activeTabNumber').textContent,'6');
+  app.callback('manualStop','click')();
+  app.callback('tab5','click')();
+  assert.equal(app.element('activeTabNumber').textContent,'5');
+});
+test('resetting one tab never erases the other tabs or acoustic profile',()=>{
+  const store=new Map([
+    [profileKey,JSON.stringify(sampleProfile())],
+    ['acoustic-mixture-counter-v1-cycles',JSON.stringify([{elapsed:10000,flow:60,volume:10}])],
+    ['acoustic-mixture-counter-v1-cycles-tab-2',JSON.stringify([{elapsed:5000,flow:60,volume:5}])]
+  ]);
+  const app=boot(store);
+  app.callback('tab2','click')();app.frame(1000);
+  assert.equal(app.element('total').textContent,'5,000');
+  app.callback('reset','click')();app.frame(1100);
+  assert.equal(app.element('total').textContent,'0,000');
+  assert.equal(app.element('compensationK').textContent,'1');
+  assert.ok(store.has(profileKey));
+  app.callback('tab1','click')();app.frame(1200);
+  assert.equal(app.element('total').textContent,'10,000');
+  assert.equal(app.element('compensationK').textContent,'1,0074');
+  assert.equal(JSON.parse(store.get('acoustic-mixture-counter-v1-cycles-tab-2')).length,0);
+});
