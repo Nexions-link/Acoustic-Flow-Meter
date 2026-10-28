@@ -44,6 +44,13 @@
       .comp-value { font-size:clamp(20px,5.2vw,24px); }
       .comp-rate { font-size:11px; }
     }
+    .tab-panel { background:rgba(22,33,50,.75); border:1px solid var(--border); border-radius:15px; padding:13px; margin:12px 0 2px; }
+    .tab-heading { display:flex; justify-content:space-between; gap:8px; color:var(--muted); align-items:center; font-size:12px; margin-bottom:9px; }
+    .tab-heading strong { color:var(--text); font-size:13px; }
+    .channel-tabs { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:7px; }
+    .channel-tabs button { aspect-ratio:1 / 1; min-width:0; width:100%; min-height:0; padding:0; border-radius:10px; font-size:clamp(17px,5vw,23px); font-weight:800; font-variant-numeric:tabular-nums; }
+    .channel-tabs button[aria-selected="true"] { background:var(--accent2); border-color:#90c8ff; color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); }
+    .channel-tabs button:disabled { opacity:.55; }
     .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid var(--border); gap:10px; margin-top:16px; padding-top:15px; }
     .stat-label { font-size:12px; line-height:1.25; color:var(--muted); margin-bottom:6px; }
     .stat-value { font-size:clamp(15px,4vw,22px); font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -94,6 +101,18 @@
     <p>Объём по расходу и длительности жужжания прибора. Обработка звука выполняется на устройстве.</p>
   </header>
 
+  <nav class="tab-panel" aria-label="Выбор вкладки измерений">
+    <div class="tab-heading"><strong>Вкладка измерений <span id="activeTabNumber">1</span> из 6</strong><span>Обучение звуку общее</span></div>
+    <div class="channel-tabs" role="tablist" aria-label="Измерения 1–6">
+      <button type="button" role="tab" id="tab1" aria-selected="true" aria-label="Вкладка 1">1</button>
+      <button type="button" role="tab" id="tab2" aria-selected="false" aria-label="Вкладка 2">2</button>
+      <button type="button" role="tab" id="tab3" aria-selected="false" aria-label="Вкладка 3">3</button>
+      <button type="button" role="tab" id="tab4" aria-selected="false" aria-label="Вкладка 4">4</button>
+      <button type="button" role="tab" id="tab5" aria-selected="false" aria-label="Вкладка 5">5</button>
+      <button type="button" role="tab" id="tab6" aria-selected="false" aria-label="Вкладка 6">6</button>
+    </div>
+  </nav>
+
   <section class="panel" aria-label="Результаты измерений">
     <div class="status-line"><span id="statusDot" class="dot"></span><span id="status">Микрофон не подключён</span></div>
     <div class="summary-top">
@@ -113,6 +132,7 @@
       <div><div class="stat-label">Циклов завершено</div><div class="stat-value" id="cycles">0</div></div>
     </div>
     <div class="statebox">Текущий цикл: <strong id="currentVolume">0,000 л</strong><span id="cycleFlowInfo" class="small"></span></div>
+    <p class="footnote">Суммарный объём, коэффициент и журнал считаются отдельно для каждой вкладки. Переключение заблокировано во время автоучёта или ручной продувки.</p>
     <p class="footnote">Коэффициент компенсации увеличивается на <strong>0,74 % за каждые 10 л</strong>: 0 л → K = 1, 5 л → K = 1,0037, 10 л → K = 1,0074. Формула: K = 1 + 0,00074 × V, где V — суммарный объём в литрах. Коэффициент не изменяет объём смеси. Для автоматического цикла время = жужжание + 2 с; ручной режим без временной поправки.</p>
   </section>
 
@@ -160,7 +180,7 @@
     <div class="log-header"><h2 style="margin:0">Журнал циклов</h2><div class="log-actions"><button id="downloadCsv">Экспорт CSV</button><button id="reset" class="danger">Сбросить журнал</button></div></div>
     <div id="empty" class="empty">Завершённых циклов пока нет</div>
     <div class="table-scroll"><table id="logTable" class="hidden"><thead><tr><th>№</th><th>Расход, л/мин</th><th>Расчётное время, с</th><th>Объём, л</th></tr></thead><tbody id="rows"></tbody></table></div>
-    <p class="footnote">Для новых автоматических циклов время в таблице уже включает поправку +2 с. В CSV отдельно указаны время жужжания и поправка. Старые записи не пересчитываются; ручные циклы остаются без поправки. Журнал сохраняется в браузере. Частотный профиль звука хранится отдельно, аудиозаписи не сохраняются.</p>
+    <p class="footnote">Этот журнал и сброс относятся только к выбранной вкладке. В CSV отдельно указаны время жужжания и поправка +2 с для автоматических циклов. Ручные циклы без поправки. Данные сохраняются в браузере, а звуковой профиль общий для всех шести вкладок.</p>
   </section>
 </div>
 <script>
@@ -169,8 +189,13 @@
   const $ = id => document.getElementById(id);
   const el = Object.fromEntries(['flow','status','statusDot','total','currentTime','sumTime','cycles','currentVolume','cycleFlowInfo',
     'microphone','microphoneOff','learnOff','learnOn','offStep','onStep','offCheck','onCheck','help','scoreLabel','scoreMeter','scoreBar',
-    'sensitivity','sensitivityLabel','autoStart','autoStop','manualStart','manualStop','warning','downloadCsv','reset','empty','logTable','rows','profileStatus','exportProfile','importProfile','clearProfile','profileFile','compensationK','compensationPercent'].map(id=>[id,$(id)]));
+    'sensitivity','sensitivityLabel','autoStart','autoStop','manualStart','manualStop','warning','downloadCsv','reset','empty','logTable','rows','profileStatus','exportProfile','importProfile','clearProfile','profileFile','compensationK','compensationPercent','activeTabNumber'].map(id=>[id,$(id)]));
+  const tabButtons=Array.from({length:6},(_,i)=>$('tab'+(i+1)));
   const STORAGE='acoustic-mixture-counter-v1';
+  const ACTIVE_TAB_KEY=STORAGE+'-active-tab';
+  // Сохраняем прежние ключи вкладки 1: старые измерения никуда не пропадут.
+  const cycleKey=tab=>tab===1?STORAGE+'-cycles':STORAGE+'-cycles-tab-'+tab;
+  const flowKey=tab=>tab===1?STORAGE+'-flow':STORAGE+'-flow-tab-'+tab;
   const PROFILE_KEY=STORAGE+'-sound-profile-v1';
   const PROFILE_FORMAT='acoustic-flow-meter-sound-profile';
   const PROFILE_VERSION=1;
@@ -193,9 +218,18 @@
   let cycles=[];
   let lastEvent='';
   let profileSavedAt=null;
-  const storedFlow = storageGet(STORAGE+'-flow');
-  if(storedFlow) el.flow.value=storedFlow;
-  try {const json=JSON.parse(storageGet(STORAGE+'-cycles')||'[]'); if(Array.isArray(json)) cycles=json.filter(c=>typeof c?.elapsed==='number'&&typeof c?.flow==='number'&&typeof c?.volume==='number'&&Number.isFinite(c.volume)&&c.volume>=0&&c.elapsed>=0).slice(-5000);}catch(_){}
+  const validTab=n=>Number.isInteger(n)&&n>=1&&n<=6;
+  const lastTab=Number(storageGet(ACTIVE_TAB_KEY));
+  let activeTab=validTab(lastTab)?lastTab:1;
+  function readCycles(tab){
+    try{
+      const json=JSON.parse(storageGet(cycleKey(tab))||'[]');
+      if(Array.isArray(json))return json.filter(c=>typeof c?.elapsed==='number'&&typeof c?.flow==='number'&&typeof c?.volume==='number'&&Number.isFinite(c.volume)&&c.volume>=0&&c.elapsed>=0).slice(-5000);
+    }catch(_){}
+    return [];
+  }
+  cycles=readCycles(activeTab);
+  el.flow.value=storageGet(flowKey(activeTab))||'';
   const savedThreshold = Number(storageGet(STORAGE+'-threshold'));
   if(savedThreshold>=40&&savedThreshold<=85) el.sensitivity.value=savedThreshold;
 
@@ -213,7 +247,7 @@
   };
   const totals=()=>cycles.reduce((a,c)=>(a.time+=c.elapsed,a.volume+=c.volume,a),{time:0,volume:0});
   const now=()=>performance.now();
-  const persist=()=>{if(!storageSet(STORAGE+'-cycles',JSON.stringify(cycles)))message('Не удалось сохранить журнал в этом браузере. Экспортируй CSV.','warn');};
+  const persist=()=>{if(!storageSet(cycleKey(activeTab),JSON.stringify(cycles)))message('Не удалось сохранить журнал вкладки '+activeTab+'. Экспортируй CSV.','warn');};
   const message=(s,kind='normal')=>{lastEvent=s;el.help.textContent=s;el.help.style.color=kind==='warn'?'var(--warn)':'var(--text)';};
   const validSpectrum=a=>Array.isArray(a)&&a.length===PROFILE_BANDS&&a.every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=-160&&n<=80);
   const validProfile=p=>p&&typeof p==='object'&&p.format===PROFILE_FORMAT&&p.version===PROFILE_VERSION&&validSpectrum(p.off)&&validSpectrum(p.on);
@@ -273,7 +307,30 @@
     }
   }
   function setStatus(label,cls='') {el.status.textContent=label;el.statusDot.className='dot'+(cls?' '+cls:'');}
+  function switchTab(tab){
+    if(!validTab(tab)||tab===activeTab)return;
+    if(monitoring||activeCycle||pendingCycle||capture){
+      message('Сначала останови автоучёт или текущую продувку, затем переключай вкладку.','warn');
+      return;
+    }
+    activeTab=tab;
+    cycles=readCycles(tab);
+    el.flow.value=storageGet(flowKey(tab))||'';
+    storageSet(ACTIVE_TAB_KEY,String(tab));
+    renderTabs();renderLog();refreshButtons();
+    message('Открыта вкладка '+tab+'. Объём, коэффициент и журнал этой вкладки независимы.');
+  }
+  function renderTabs(){
+    el.activeTabNumber.textContent=String(activeTab);
+    const locked=monitoring||!!activeCycle||!!pendingCycle||!!capture;
+    tabButtons.forEach((b,i)=>{
+      const selected=i+1===activeTab;
+      b.setAttribute('aria-selected',selected?'true':'false');
+      b.disabled=locked&&!selected;
+    });
+  }
   function refreshButtons(){
+    renderTabs();
     const hasMic=!!context&&!!stream;
     const isCapturing=!!capture;
     const ready=profileReady();
@@ -607,6 +664,7 @@
     updateTrainingMarks();updateProfileUI();refreshButtons();
     message('Звуковой профиль удалён. Для автоучёта потребуется новое обучение.');
   });
+  tabButtons.forEach((button,i)=>button.addEventListener('click',()=>switchTab(i+1)));
   el.microphone.addEventListener('click',micOn);
   el.microphoneOff.addEventListener('click',micOff);
   el.learnOff.addEventListener('click',()=>startCapture('off'));
@@ -616,7 +674,7 @@
   el.manualStart.addEventListener('click',()=>{if(monitoring)return;startCycle(now(),'manual');});
   el.manualStop.addEventListener('click',()=>{if(activeCycle?.source==='manual')endCycle(now());});
   el.flow.addEventListener('input',()=>{
-    storageSet(STORAGE+'-flow',el.flow.value);
+    storageSet(flowKey(activeTab),el.flow.value);
     refreshButtons();
   });
   el.sensitivity.addEventListener('input',()=>{
@@ -626,11 +684,11 @@
   el.reset.addEventListener('click',()=>{
     if(activeCycle||monitoring){message('Сначала останови учёт, затем сбрасывай журнал.','warn');return;}
     if(!cycles.length)return;
-    if(!window.confirm('Удалить журнал и обнулить суммарный объём?'))return;
-    cycles=[];persist();renderLog();message('Журнал очищен.');
+    if(!window.confirm('Удалить журнал вкладки '+activeTab+' и обнулить её суммарный объём? Данные других вкладок останутся.'))return;
+    cycles=[];persist();renderLog();message('Журнал вкладки '+activeTab+' очищен.');
   });
   el.downloadCsv.addEventListener('click',()=>{
-    if(!cycles.length){message('Сначала заверши хотя бы одну продувку.');return;}
+    if(!cycles.length){message('На вкладке '+activeTab+' пока нет завершённых продувок.');return;}
     const quote=s=>'"'+String(s).replaceAll('"','""')+'"';
     const lines=[['Номер','Начало жужжания','Источник','Расход, л/мин','Жужжание, с','Поправка, с','Расчётное время, с','Объём, л','Прерван'].map(quote).join(';')];
     const fmt=n=>n.toFixed(3).replace('.',',');
@@ -641,7 +699,7 @@
     lines.push(['Итого','','','',fmt(totalBuzz/1000),fmt(totalExtra/1000),fmt(totalsRow.time/1000),totalsRow.volume.toFixed(6).replace('.',','),''].map(quote).join(';'));
     const blob=new Blob(['\uFEFF',lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='produvki-'+new Date().toISOString().slice(0,10)+'.csv';
+    a.href=url;a.download='produvki-vkladka-'+activeTab+'-'+new Date().toISOString().slice(0,10)+'.csv';
     a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
   });
   document.addEventListener('visibilitychange',()=>{
