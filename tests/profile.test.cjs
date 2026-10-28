@@ -172,18 +172,18 @@ test('compensation starts at unity and is shown next to total volume',()=>{
   assert.equal(app.element('compensationK').textContent,'1');
   assert.equal(app.element('compensationPercent').textContent,'+0,000 %');
 });
-test('saved volume gives linear compensation K=1+0.0073*V, including 5 and 10 liters',()=>{
+test('saved volume gives linear compensation +0.74 percent per 10 liters',()=>{
   const mk=(volume)=>{
     const store=new Map([['acoustic-mixture-counter-v1-cycles',JSON.stringify([{elapsed:60000,flow:volume,volume}])]]);
     const app=boot(store);app.frame(1000);return app;
   };
   for(const [vol,k,pct] of [
     [0,'1','+0,000 %'],
-    [1,'1,0073','+0,730 %'],
-    [5,'1,0365','+3,650 %'],
-    [10,'1,073','+7,300 %'],
-    [20,'1,146','+14,600 %'],
-    [25,'1,1825','+18,250 %']
+    [1,'1,00074','+0,074 %'],
+    [5,'1,0037','+0,370 %'],
+    [10,'1,0074','+0,740 %'],
+    [20,'1,0148','+1,480 %'],
+    [25,'1,0185','+1,850 %']
   ]){
     const app=mk(vol);
     assert.equal(app.element('compensationK').textContent,k);
@@ -198,7 +198,7 @@ test('compensation responds to current cycle and journal reset without modifying
   app.callback('manualStart','click')();
   app.frame(11000);
   assert.equal(app.element('total').textContent,'10,000');
-  assert.equal(app.element('compensationK').textContent,'1,073');
+  assert.equal(app.element('compensationK').textContent,'1,0074');
   app.callback('manualStop','click')();
   const saved=JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles'));
   assert.equal(saved[0].volume,10);
