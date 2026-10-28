@@ -164,3 +164,45 @@ test('interrupted automatic cycle is flagged and omits unobserved trailing secon
   assert.equal(c.elapsed,13500);
   assert.equal(c.interrupted,true);
 });
+
+test('compensation starts at unity and is shown next to total volume',()=>{
+  const app=boot();
+  app.frame(1000);
+  assert.equal(app.element('total').textContent,'0,000');
+  assert.equal(app.element('compensationK').textContent,'1,000000');
+  assert.equal(app.element('compensationPercent').textContent,'+0,000 %');
+});
+test('saved volume gives linear compensation 0.74 percent per 10 liters',()=>{
+  const mk=(volume)=>{
+    const store=new Map([['acoustic-mixture-counter-v1-cycles',JSON.stringify([{elapsed:60000,flow:volume,volume}])]]);
+    const app=boot(store);app.frame(1000);return app;
+  };
+  for(const [vol,k,pct] of [
+    [10,'1,007400','+0,740 %'],
+    [20,'1,014800','+1,480 %'],
+    [25,'1,018500','+1,850 %'],
+    [1,'1,000740','+0,074 %']
+  ]){
+    const app=mk(vol);
+    assert.equal(app.element('compensationK').textContent,k);
+    assert.equal(app.element('compensationPercent').textContent,pct);
+    assert.equal(app.element('total').textContent,vol.toLocaleString('ru-RU',{minimumFractionDigits:3,maximumFractionDigits:3}));
+  }
+});
+test('compensation responds to current cycle and journal reset without modifying volume',()=>{
+  const app=boot();
+  app.element('flow').value='60';
+  app.setClock(1000);
+  app.callback('manualStart','click')();
+  app.frame(11000);
+  assert.equal(app.element('total').textContent,'10,000');
+  assert.equal(app.element('compensationK').textContent,'1,007400');
+  app.callback('manualStop','click')();
+  const saved=JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles'));
+  assert.equal(saved[0].volume,10);
+  assert.equal(saved[0].elapsed,10000);
+  app.callback('reset','click')();
+  app.frame(11100);
+  assert.equal(app.element('total').textContent,'0,000');
+  assert.equal(app.element('compensationK').textContent,'1,000000');
+});
