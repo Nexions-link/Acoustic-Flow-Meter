@@ -51,12 +51,16 @@
     .channel-tabs button { aspect-ratio:1 / 1; min-width:0; width:100%; min-height:0; padding:0; border-radius:10px; font-size:clamp(17px,5vw,23px); font-weight:800; font-variant-numeric:tabular-nums; }
     .channel-tabs button[aria-selected="true"] { background:var(--accent2); border-color:#90c8ff; color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); }
     .channel-tabs button:disabled { opacity:.55; }
-    .quick-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; background:rgba(22,33,50,.95); border:1px solid var(--border); border-radius:14px; padding:10px; margin-top:10px; }
+    .quick-panel { background:rgba(22,33,50,.95); border:1px solid var(--border); border-radius:14px; padding:11px; margin-top:9px; }
+    .quick-flow { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:10px; margin-bottom:9px; }
+    .quick-flow label { font-size:13px; font-weight:650; white-space:nowrap; }
+    .quick-flow input { height:44px; min-width:0; font-size:18px; }
+    .quick-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
     .quick-actions > div { min-width:0; }
     .quick-actions button { display:block; width:100%; min-height:50px; padding:9px 7px; line-height:1.2; font-size:clamp(12px,3.5vw,15px); white-space:normal; }
     .quick-actions button.stop { border-color:#7a5151; color:#ffcdcd; background:#382730; }
     .quick-actions button[hidden] { display:none!important; }
-    @media(max-width:450px) { .quick-actions { gap:7px; padding:8px; margin-top:8px; } .quick-actions button { min-height:48px; } }
+    @media(max-width:450px) { .quick-panel { padding:9px; } .quick-flow { gap:8px; margin-bottom:8px; } .quick-flow input { height:43px; } .quick-actions { gap:7px; } .quick-actions button { min-height:46px; } }
     .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid var(--border); gap:10px; margin-top:16px; padding-top:15px; }
     .stat-label { font-size:12px; line-height:1.25; color:var(--muted); margin-bottom:6px; }
     .stat-value { font-size:clamp(15px,4vw,22px); font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -119,14 +123,20 @@
     </div>
   </nav>
 
-  <section class="quick-actions" aria-label="Основное управление прибором">
-    <div>
-      <button class="primary" id="microphone">Включить микрофон</button>
-      <button class="stop" id="microphoneOff" hidden disabled>Отключить микрофон</button>
+  <section class="quick-panel" aria-label="Расход и основное управление прибором">
+    <div class="quick-flow">
+      <label for="flow">Расход, л/мин</label>
+      <input id="flow" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Например, 1,5">
     </div>
-    <div>
-      <button class="primary" id="autoStart" disabled>Начать автоучёт</button>
-      <button class="stop" id="autoStop" hidden disabled>Остановить автоучёт</button>
+    <div class="quick-actions" aria-label="Основное управление прибором">
+      <div>
+        <button class="primary" id="microphone">Включить микрофон</button>
+        <button class="stop" id="microphoneOff" hidden disabled>Отключить микрофон</button>
+      </div>
+      <div>
+        <button class="primary" id="autoStart" disabled>Начать автоучёт</button>
+        <button class="stop" id="autoStop" hidden disabled>Остановить автоучёт</button>
+      </div>
     </div>
   </section>
 
@@ -149,22 +159,12 @@
       <div><div class="stat-label">Циклов завершено</div><div class="stat-value" id="cycles">0</div></div>
     </div>
     <div class="statebox">Текущий цикл: <strong id="currentVolume">0,000 л</strong><span id="cycleFlowInfo" class="small"></span></div>
-    <p class="footnote">Суммарный объём, коэффициент и журнал считаются отдельно для каждой вкладки. Переключение заблокировано во время автоучёта или ручной продувки.</p>
-    <p class="footnote">Коэффициент компенсации увеличивается на <strong>0,74 % за каждые 10 л</strong>: 0 л → K = 1, 5 л → K = 1,0037, 10 л → K = 1,0074. Формула: K = 1 + 0,00074 × V, где V — суммарный объём в литрах. Коэффициент не изменяет объём смеси. Для автоматического цикла время = жужжание + 2 с; ручной режим без временной поправки.</p>
-  </section>
 
-  <section class="panel" aria-label="Параметры продувки">
-    <h2>1. Укажи расход смеси</h2>
-    <div class="field">
-      <label for="flow">Расход, л/мин</label>
-      <input id="flow" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Например, 1,5">
-      <small>Допустимы точка и запятая. Расход фиксируется на весь текущий цикл.</small>
-    </div>
   </section>
 
   <section class="panel" aria-label="Микрофон и обучение">
-    <h2>2. Обучи приложение звуку прибора</h2>
-    <p class="footnote">Микрофон включается кнопкой наверху, под вкладками. Обучение звуку доступно ниже.</p>
+    <h2>Обучение звуку прибора</h2>
+    <p class="footnote">Микрофон и расход — в верхнем блоке под вкладками.</p>
     <div class="steps">
       <div id="offStep" class="step"><span class="check" id="offCheck">○</span><div><strong>Прибор молчит</strong>Эталон фонового шума</div></div>
       <div id="onStep" class="step"><span class="check" id="onCheck">○</span><div><strong>Прибор жужжит</strong>Эталон рабочего звука</div></div>
@@ -186,11 +186,13 @@
   </section>
 
   <section class="panel" aria-label="Управление учётом">
-    <h2>3. Ручной режим и ограничения</h2>
+    <h2>Ручной режим и ограничения</h2>
     <p class="footnote">Запуск и остановка автоучёта находятся наверху, рядом с управлением микрофоном.</p>
     <div class="alert" id="warning">На iPhone страница должна быть открыта с включённым экраном. При блокировке или переключении приложения учёт может прерваться. Прототип не заменяет поверенный газовый счётчик.</div>
     <p class="footnote">Для проверки расчёта без прибора можно вручную запустить и остановить один цикл:</p>
     <div class="btnrow narrow"><button id="manualStart">Пуск вручную</button><button id="manualStop" disabled>Стоп вручную</button></div>
+    <p class="footnote">Расход принимает точку или запятую и фиксируется на весь цикл. Суммарные объём, коэффициент и журнал независимы для каждой вкладки. Переключение заблокировано во время измерения.</p>
+    <p class="footnote">Коэффициент компенсации увеличивается на <strong>0,74 % за каждые 10 л</strong>: 0 л → K = 1, 5 л → K = 1,0037, 10 л → K = 1,0074. Формула: K = 1 + 0,00074 × V; объём смеси не меняется. Для автоматического цикла время = жужжание + 2 с, для ручного — без поправки.</p>
   </section>
 
   <section class="panel" aria-label="Журнал продувок">
