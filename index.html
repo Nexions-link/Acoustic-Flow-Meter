@@ -52,15 +52,16 @@
     .channel-tabs button[aria-selected="true"] { background:var(--accent2); border-color:#90c8ff; color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); }
     .channel-tabs button:disabled { opacity:.55; }
     .quick-panel { background:rgba(22,33,50,.95); border:1px solid var(--border); border-radius:14px; padding:11px; margin-top:9px; }
-    .quick-flow { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:10px; margin-bottom:9px; }
-    .quick-flow label { font-size:13px; font-weight:650; white-space:nowrap; }
-    .quick-flow input { height:44px; min-width:0; font-size:18px; }
+    .quick-flow { display:grid; grid-template-columns:minmax(80px,auto) minmax(70px,94px) minmax(98px,1fr); align-items:center; gap:8px; margin-bottom:9px; }
+    .quick-flow label { font-size:12px; font-weight:650; line-height:1.25; }
+    .quick-flow input[type=text] { height:44px; min-width:0; font-size:18px; padding:0 9px; }
+    .quick-flow #reset { min-height:44px; min-width:0; padding:7px 5px; font-size:clamp(11px,3.2vw,13px); line-height:1.15; white-space:normal; }
     .quick-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
     .quick-actions > div { min-width:0; }
     .quick-actions button { display:block; width:100%; min-height:50px; padding:9px 7px; line-height:1.2; font-size:clamp(12px,3.5vw,15px); white-space:normal; }
     .quick-actions button.stop { border-color:#7a5151; color:#ffcdcd; background:#382730; }
     .quick-actions button[hidden] { display:none!important; }
-    @media(max-width:450px) { .quick-panel { padding:9px; } .quick-flow { gap:8px; margin-bottom:8px; } .quick-flow input { height:43px; } .quick-actions { gap:7px; } .quick-actions button { min-height:46px; } }
+    @media(max-width:450px) { .quick-panel { padding:9px; } .quick-flow { grid-template-columns:minmax(66px,auto) minmax(66px,88px) minmax(91px,1fr); gap:6px; margin-bottom:8px; } .quick-flow input[type=text] { height:43px; } .quick-flow #reset { min-height:43px; } .quick-actions { gap:7px; } .quick-actions button { min-height:46px; } }
     .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid var(--border); gap:10px; margin-top:16px; padding-top:15px; }
     .stat-label { font-size:12px; line-height:1.25; color:var(--muted); margin-bottom:6px; }
     .stat-value { font-size:clamp(15px,4vw,22px); font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -126,7 +127,8 @@
   <section class="quick-panel" aria-label="Расход и основное управление прибором">
     <div class="quick-flow">
       <label for="flow">Расход, л/мин</label>
-      <input id="flow" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Например, 1,5">
+      <input id="flow" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1,5">
+      <button type="button" id="reset" class="danger" disabled>Сброс отчёта</button>
     </div>
     <div class="quick-actions" aria-label="Основное управление прибором">
       <div>
@@ -196,7 +198,7 @@
   </section>
 
   <section class="panel" aria-label="Журнал продувок">
-    <div class="log-header"><h2 style="margin:0">Журнал циклов</h2><div class="log-actions"><button id="downloadCsv">Экспорт CSV</button><button id="reset" class="danger">Сбросить журнал</button></div></div>
+    <div class="log-header"><h2 style="margin:0">Журнал циклов</h2><div class="log-actions"><button id="downloadCsv">Экспорт CSV</button></div></div>
     <div id="empty" class="empty">Завершённых циклов пока нет</div>
     <div class="table-scroll"><table id="logTable" class="hidden"><thead><tr><th>№</th><th>Расход, л/мин</th><th>Расчётное время, с</th><th>Объём, л</th></tr></thead><tbody id="rows"></tbody></table></div>
     <p class="footnote">Этот журнал и сброс относятся только к выбранной вкладке. В CSV отдельно указаны время жужжания и поправка +2 с для автоматических циклов. Ручные циклы без поправки. Данные сохраняются в браузере, а звуковой профиль общий для всех шести вкладок.</p>
@@ -367,6 +369,7 @@
     el.manualStart.disabled=!!activeCycle||monitoring||isCapturing||!getFlow();
     el.manualStop.disabled=!activeCycle||activeCycle.source!=='manual';
     el.flow.disabled=!!activeCycle||!!pendingCycle;
+    el.reset.disabled=monitoring||!!activeCycle||!!pendingCycle||isCapturing||cycles.length===0;
     el.sensitivity.disabled=!!capture;
     const profileBusy=monitoring||!!activeCycle||!!pendingCycle||isCapturing;
     el.exportProfile.disabled=!ready;
@@ -706,10 +709,10 @@
     storageSet(STORAGE+'-threshold',el.sensitivity.value);
   });
   el.reset.addEventListener('click',()=>{
-    if(activeCycle||monitoring){message('Сначала останови учёт, затем сбрасывай журнал.','warn');return;}
+    if(activeCycle||pendingCycle||monitoring||capture){message('Сначала останови учёт или обучение звуку, затем сбрасывай отчёт.','warn');return;}
     if(!cycles.length)return;
     if(!window.confirm('Удалить журнал вкладки '+activeTab+' и обнулить её суммарный объём? Данные других вкладок останутся.'))return;
-    cycles=[];persist();renderLog();message('Журнал вкладки '+activeTab+' очищен.');
+    cycles=[];persist();renderLog();refreshButtons();message('Отчёт вкладки '+activeTab+' сброшен.');
   });
   el.downloadCsv.addEventListener('click',()=>{
     if(!cycles.length){message('На вкладке '+activeTab+' пока нет завершённых продувок.');return;}
