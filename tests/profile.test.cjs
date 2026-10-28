@@ -434,3 +434,40 @@ test('reset report is unavailable during automatic monitoring',async()=>{
   app.callback('autoStop','click')();
   assert.equal(app.element('reset').disabled,false);
 });
+
+test('header and training sampling copy use the requested wording',()=>{
+  assert.ok(html.includes('Объём по расходу и длительности подачи пробы. Обработка звука выполняется на устройстве.'));
+  assert.ok(html.includes('<strong>Прибор отбирает пробу</strong>'));
+  assert.ok(html.includes('Записать звук отбора пробы · 2 с'));
+  assert.equal(html.includes('<strong>Прибор жужжит</strong>'),false);
+});
+test('training controls live inside a natively collapsible, initially closed details element',()=>{
+  const open=html.indexOf('<details class="panel training-panel" id="trainingDisclosure">');
+  const sumStart=html.indexOf('<summary>',open),sumEnd=html.indexOf('</summary>',sumStart);
+  const close=html.indexOf('</details>',sumEnd);
+  assert.ok(open>0&&sumStart>open&&sumEnd>sumStart&&close>sumEnd);
+  assert.ok(html.slice(sumStart,sumEnd).includes('Обучение звуку прибора'));
+  assert.ok(html.slice(sumStart,sumEnd).includes('id="trainingSummaryStatus"'));
+  for(const id of ['offStep','onStep','learnOff','learnOn','profileStatus','exportProfile','importProfile','clearProfile','profileFile','scoreMeter','sensitivity']){
+    const pos=html.indexOf('id="'+id+'"');
+    assert.ok(pos>sumEnd&&pos<close,'Training field remains inside spoiler: '+id);
+  }
+  assert.equal(html.slice(open,sumStart).includes(' open'),false,'Spoiler must start closed');
+});
+test('collapsed training header reflects missing, loaded, and newly trained sound profiles',async()=>{
+  const empty=boot();
+  assert.equal(empty.element('trainingSummaryStatus').textContent,'Требуется обучение');
+  const stored=boot(new Map([[profileKey,JSON.stringify(sampleProfile())]]));
+  assert.equal(stored.element('trainingSummaryStatus').textContent,'Звуковой профиль сохранён');
+  const app=boot();
+  app.element('flow').value='1,5';
+  await app.callback('microphone','click')();
+  app.setAudio(-105);app.setClock(1000);await app.callback('learnOff','click')();
+  app.frame(1000);app.frame(3100);
+  assert.equal(app.element('trainingSummaryStatus').textContent,'Обучение: 1 из 2 образцов');
+  app.setAudio(-82);app.setClock(4000);await app.callback('learnOn','click')();
+  app.frame(4000);app.frame(6200);
+  assert.equal(app.element('trainingSummaryStatus').textContent,'Звуковой профиль сохранён');
+  app.callback('clearProfile','click')();
+  assert.equal(app.element('trainingSummaryStatus').textContent,'Требуется обучение');
+});
