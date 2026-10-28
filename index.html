@@ -22,6 +22,20 @@
     h1 { margin:0; font-size:clamp(22px,5.7vw,31px); font-weight:760; letter-spacing:-.035em; }
     h2 { margin:0 0 14px; font-size:17px; letter-spacing:-.01em; }
     header p { font-size:14px; line-height:1.5; margin:8px 0 19px; color:var(--muted); }
+    .training-panel { padding:0; overflow:hidden; }
+    .training-panel > summary { display:flex; justify-content:space-between; align-items:center; gap:10px; cursor:pointer; list-style:none; padding:15px 16px; min-height:60px; user-select:none; -webkit-user-select:none; }
+    .training-panel > summary::-webkit-details-marker { display:none; }
+    .training-panel > summary::marker { content:""; }
+    .training-panel > summary:focus-visible { outline:2px solid var(--accent); outline-offset:-4px; border-radius:15px; }
+    .training-heading { display:flex; flex-direction:column; gap:3px; min-width:0; }
+    .training-title { font-size:16px; font-weight:750; letter-spacing:-.01em; line-height:1.25; }
+    .training-hint { font-size:12px; color:var(--muted); line-height:1.3; }
+    .training-chevron { width:10px; height:10px; border-right:2px solid var(--accent); border-bottom:2px solid var(--accent); transform:rotate(45deg); transition:transform .18s; flex-shrink:0; margin:0 4px 5px 8px; }
+    .training-panel[open] .training-chevron { transform:rotate(225deg); margin-top:7px; margin-bottom:0; }
+    .training-panel[open] > summary { border-bottom:1px solid var(--border); background:rgba(112,183,255,.045); }
+    .training-body { padding:14px 16px 17px; }
+    .training-body .footnote:first-child { margin-top:0; }
+    @media(max-width:450px) { .training-panel > summary { padding:13px 14px; min-height:58px; } .training-body { padding:13px 14px 16px; } }
     .panel { background:linear-gradient(145deg,rgba(29,45,65,.96),rgba(18,30,46,.98)); border:1px solid var(--border); border-radius:17px; padding:18px; margin-top:13px; }
     .status-line { display:flex; gap:9px; align-items:center; color:var(--muted); font-size:13px; font-weight:650; margin:0 0 8px; }
     .dot { background:#6d7c8b; width:10px; height:10px; display:inline-block; border-radius:50%; flex-shrink:0; }
@@ -109,7 +123,7 @@
 <div class="app">
   <header>
     <h1>Акустический счётчик смеси</h1>
-    <p>Объём по расходу и длительности жужжания прибора. Обработка звука выполняется на устройстве.</p>
+    <p>Объём по расходу и длительности подачи пробы. Обработка звука выполняется на устройстве.</p>
   </header>
 
   <nav class="tab-panel" aria-label="Выбор вкладки измерений">
@@ -164,14 +178,21 @@
 
   </section>
 
-  <section class="panel" aria-label="Микрофон и обучение">
-    <h2>Обучение звуку прибора</h2>
-    <p class="footnote">Микрофон и расход — в верхнем блоке под вкладками.</p>
+  <details class="panel training-panel" id="trainingDisclosure">
+    <summary>
+      <span class="training-heading">
+        <span class="training-title">Обучение звуку прибора</span>
+        <span class="training-hint" id="trainingSummaryStatus" aria-live="polite">Требуется обучение</span>
+      </span>
+      <span class="training-chevron" aria-hidden="true"></span>
+    </summary>
+    <div class="training-body">
+      <p class="footnote">Микрофон и расход — в верхнем блоке под вкладками.</p>
     <div class="steps">
       <div id="offStep" class="step"><span class="check" id="offCheck">○</span><div><strong>Прибор молчит</strong>Эталон фонового шума</div></div>
-      <div id="onStep" class="step"><span class="check" id="onCheck">○</span><div><strong>Прибор жужжит</strong>Эталон рабочего звука</div></div>
+      <div id="onStep" class="step"><span class="check" id="onCheck">○</span><div><strong>Прибор отбирает пробу</strong>Эталон звука отбора пробы</div></div>
     </div>
-    <div class="btnrow narrow"><button id="learnOff" disabled>Записать тишину · 2 с</button><button id="learnOn" disabled>Записать жужжание · 2 с</button></div>
+    <div class="btnrow narrow"><button id="learnOff" disabled>Записать тишину · 2 с</button><button id="learnOn" disabled>Записать звук отбора пробы · 2 с</button></div>
     <div class="statebox" id="profileStatus" role="status">Сохранённого звукового профиля пока нет. Обучи прибор один раз.</div>
     <div class="btnrow">
       <button id="exportProfile" disabled>Скачать профиль</button>
@@ -185,7 +206,8 @@
     <div class="meter" role="progressbar" aria-label="Похожесть на рабочий звук" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="scoreMeter"><div class="meterfill" id="scoreBar"></div></div>
     <div class="range-line"><label for="sensitivity">Порог срабатывания</label><input id="sensitivity" type="range" min="40" max="85" value="58" step="1"><span class="range-value" id="sensitivityLabel">58%</span></div>
     <p class="footnote"><strong>Фильтр коротких сигналов:</strong> жужжание длительностью 10 с или меньше не учитывается. Если жужжание длится более 10 с, цикл учитывается с начала звука с поправкой <strong>+2 с</strong> на подачу смеси до и после жужжания. Предварительный сигнал (≈0,67 с) отсекается при паузе от 0,2 с. Устойчивость включения — 0,4 с, остановка подтверждённого цикла — 0,7 с.</p>
-  </section>
+    </div>
+  </details>
 
   <section class="panel" aria-label="Управление учётом">
     <h2>Ручной режим и ограничения</h2>
@@ -210,7 +232,7 @@
   const $ = id => document.getElementById(id);
   const el = Object.fromEntries(['flow','status','statusDot','total','currentTime','sumTime','cycles','currentVolume','cycleFlowInfo',
     'microphone','microphoneOff','learnOff','learnOn','offStep','onStep','offCheck','onCheck','help','scoreLabel','scoreMeter','scoreBar',
-    'sensitivity','sensitivityLabel','autoStart','autoStop','manualStart','manualStop','warning','downloadCsv','reset','empty','logTable','rows','profileStatus','exportProfile','importProfile','clearProfile','profileFile','compensationK','compensationPercent','activeTabNumber'].map(id=>[id,$(id)]));
+    'sensitivity','sensitivityLabel','autoStart','autoStop','manualStart','manualStop','warning','downloadCsv','reset','empty','logTable','rows','profileStatus','exportProfile','importProfile','clearProfile','profileFile','compensationK','compensationPercent','activeTabNumber','trainingSummaryStatus'].map(id=>[id,$(id)]));
   const tabButtons=Array.from({length:6},(_,i)=>$('tab'+(i+1)));
   const STORAGE='acoustic-mixture-counter-v1';
   const ACTIVE_TAB_KEY=STORAGE+'-active-tab';
@@ -282,7 +304,10 @@
   function updateProfileUI(){
     el.profileStatus.textContent=profileReady()&&profileSavedAt
       ?'Звуковой профиль сохранён на этом устройстве: '+new Date(profileSavedAt).toLocaleString('ru-RU')+'. Повторная запись не требуется.'
-      :profileReady()?'Профиль обучен, но не сохранён. Скачай резервную копию.':'Звуковой профиль не готов. Запиши образцы тишины и жужжания.';
+      :profileReady()?'Профиль обучен, но не сохранён. Скачай резервную копию.':'Звуковой профиль не готов. Запиши образцы тишины и звука отбора пробы.';
+    el.trainingSummaryStatus.textContent=profileReady()
+      ?(profileSavedAt?'Звуковой профиль сохранён':'Профиль обучен, сохранение недоступно')
+      :(offProfile||onProfile?'Обучение: 1 из 2 образцов':'Требуется обучение');
   }
   function profilePayload(savedAt=new Date().toISOString()){
     return {format:PROFILE_FORMAT,version:PROFILE_VERSION,savedAt,off:offProfile.slice(),on:onProfile.slice()};
