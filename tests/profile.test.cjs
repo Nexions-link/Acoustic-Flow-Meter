@@ -313,3 +313,41 @@ test('resetting one tab never erases the other tabs or acoustic profile',()=>{
   assert.equal(app.element('compensationK').textContent,'1,0074');
   assert.equal(JSON.parse(store.get('acoustic-mixture-counter-v1-cycles-tab-2')).length,0);
 });
+
+test('quick microphone and auto buttons sit immediately under tab row above results',()=>{
+  const marker=html.indexOf('class="quick-actions"');
+  assert.ok(marker>html.indexOf('id="tab6"'));
+  assert.ok(marker<html.indexOf('aria-label="Результаты измерений"'));
+  const section=html.slice(marker,html.indexOf('</section>',marker));
+  for(const id of ['microphone','microphoneOff','autoStart','autoStop']){
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'Unique control '+id);
+    assert.ok(section.includes('id="'+id+'"'),'Control in quick actions: '+id);
+  }
+});
+test('quick actions replace microphone start with disconnect and auto start with stop',async()=>{
+  const app=boot(new Map([[profileKey,JSON.stringify(sampleProfile())]]));
+  app.element('flow').value='1,5';
+  assert.equal(app.element('microphone').hidden,false);
+  assert.equal(app.element('microphoneOff').hidden,true);
+  assert.equal(app.element('autoStart').hidden,false);
+  assert.equal(app.element('autoStop').hidden,true);
+  await app.callback('microphone','click')();
+  assert.equal(app.element('microphone').hidden,true);
+  assert.equal(app.element('microphoneOff').hidden,false);
+  assert.equal(app.element('autoStart').disabled,false);
+  await app.callback('autoStart','click')();
+  assert.equal(app.element('autoStart').hidden,true);
+  assert.equal(app.element('autoStop').hidden,false);
+  app.callback('autoStop','click')();
+  assert.equal(app.element('autoStart').hidden,false);
+  assert.equal(app.element('autoStop').hidden,true);
+  await app.callback('microphoneOff','click')();
+  assert.equal(app.element('microphone').hidden,false);
+  assert.equal(app.element('microphoneOff').hidden,true);
+});
+test('quick start remains disabled until profile and flow are ready',async()=>{
+  const app=boot();
+  await app.callback('microphone','click')();
+  assert.equal(app.element('autoStart').hidden,false);
+  assert.equal(app.element('autoStart').disabled,true);
+});
