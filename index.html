@@ -91,6 +91,7 @@
       <div><div class="stat-label">Циклов завершено</div><div class="stat-value" id="cycles">0</div></div>
     </div>
     <div class="statebox">Текущий цикл: <strong id="currentVolume">0,000 л</strong><span id="cycleFlowInfo" class="small"></span></div>
+    <p class="footnote">Для завершённого автоматического цикла расчётное время = жужжание + 1 с до начала + 1 с после окончания. Поправка составляет <strong>+2 с</strong>. Ручной режим без поправки.</p>
   </section>
 
   <section class="panel" aria-label="Параметры продувки">
@@ -122,7 +123,7 @@
     <div class="meter-top"><span>Похожесть на звук прибора</span><span id="scoreLabel">—</span></div>
     <div class="meter" role="progressbar" aria-label="Похожесть на рабочий звук" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="scoreMeter"><div class="meterfill" id="scoreBar"></div></div>
     <div class="range-line"><label for="sensitivity">Порог срабатывания</label><input id="sensitivity" type="range" min="40" max="85" value="58" step="1"><span class="range-value" id="sensitivityLabel">58%</span></div>
-    <p class="footnote"><strong>Фильтр коротких сигналов:</strong> жужжание длительностью 10 с или меньше не учитывается. Если звук непрерывно длится более 10 с, объём рассчитывается <strong>с самого начала</strong> рабочего жужжания. Короткий предварительный сигнал (≈0,67 с) отсекается при различимой паузе от 0,2 с. Устойчивость включения — 0,4 с, остановка подтверждённого цикла — 0,7 с.</p>
+    <p class="footnote"><strong>Фильтр коротких сигналов:</strong> жужжание длительностью 10 с или меньше не учитывается. Если жужжание длится более 10 с, цикл учитывается с начала звука с поправкой <strong>+2 с</strong> на подачу смеси до и после жужжания. Предварительный сигнал (≈0,67 с) отсекается при паузе от 0,2 с. Устойчивость включения — 0,4 с, остановка подтверждённого цикла — 0,7 с.</p>
   </section>
 
   <section class="panel" aria-label="Управление учётом">
@@ -136,8 +137,8 @@
   <section class="panel" aria-label="Журнал продувок">
     <div class="log-header"><h2 style="margin:0">Журнал циклов</h2><div class="log-actions"><button id="downloadCsv">Экспорт CSV</button><button id="reset" class="danger">Сбросить журнал</button></div></div>
     <div id="empty" class="empty">Завершённых циклов пока нет</div>
-    <div class="table-scroll"><table id="logTable" class="hidden"><thead><tr><th>№</th><th>Расход, л/мин</th><th>Время, с</th><th>Объём, л</th></tr></thead><tbody id="rows"></tbody></table></div>
-    <p class="footnote">Суммарный объём складывается из всех циклов, даже если расход между ними менялся. Журнал завершённых циклов сохраняется только в этом браузере. Частотный профиль звука сохраняется отдельно; сами аудиозаписи никуда не передаются и не сохраняются.</p>
+    <div class="table-scroll"><table id="logTable" class="hidden"><thead><tr><th>№</th><th>Расход, л/мин</th><th>Расчётное время, с</th><th>Объём, л</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <p class="footnote">Для новых автоматических циклов время в таблице уже включает поправку +2 с. В CSV отдельно указаны время жужжания и поправка. Старые записи не пересчитываются; ручные циклы остаются без поправки. Журнал сохраняется в браузере. Частотный профиль звука хранится отдельно, аудиозаписи не сохраняются.</p>
   </section>
 </div>
 <script>
@@ -155,6 +156,10 @@
   const storageGet=key=>{try{return localStorage.getItem(key);}catch(_){return null;}};
   const storageSet=(key,value)=>{try{localStorage.setItem(key,value);return true;}catch(_){return false;}};
   const MS_ON=400, MS_OFF=700, MS_PENDING_OFF=200, MIN_AUTO_CYCLE_MS=10000, CAPTURE_MS=2000, FRAMES_PER_SECOND=16;
+  // Продувка идёт за 1 с до начала жужжания и продолжается 1 с после его окончания.
+  // Дополнительное время — только для ПОЛНОСТЬЮ завершённых автоматических циклов.
+  const AUTO_LEAD_MS=1000, AUTO_TAIL_MS=1000;
+  const AUTO_OFFSET_MS=AUTO_LEAD_MS+AUTO_TAIL_MS;
   let stream=null, context=null, analyser=null, source=null, values=null;
   let offProfile=null, onProfile=null, selectedBands=[];
   let monitoring=false, capture=null, loopHandle=null, screenLock=null;
@@ -262,14 +267,17 @@
     el.clearProfile.disabled=profileBusy&&true||(!ready&&!storageGet(PROFILE_KEY));
   }
   function draw(){
-    const t=totals(), elapsed=activeCycle?Math.max(0,(offCandidate===null?now():offCandidate)-activeCycle.start):0;
+    const t=totals(), buzzElapsed=activeCycle?Math.max(0,(offCandidate===null?now():offCandidate)-activeCycle.start):0;
+    // После 10-секундного подтверждения показываем ожидаемый полный объём (+2 c).
+    // Окончательно поправка применяется лишь при нормальном завершении звука.
+    const elapsed=activeCycle?buzzElapsed+(activeCycle.source==='auto'?AUTO_OFFSET_MS:0):0;
     if(pendingCycle)el.status.textContent='Проверка жужжания: '+decimal(Math.max(0,now()-pendingCycle.start)/1000,1)+' / 10,0 с';
     const volume=activeCycle?activeCycle.flow*elapsed/60000:0;
     el.total.textContent=decimal(t.volume+volume);
     el.sumTime.textContent=seconds(t.time+elapsed);
     el.currentTime.textContent=seconds(elapsed);
     el.currentVolume.textContent=decimal(volume)+' л';
-    el.cycleFlowInfo.textContent=activeCycle?' · '+decimal(activeCycle.flow,3)+' л/мин':'';
+    el.cycleFlowInfo.textContent=activeCycle?' · '+decimal(activeCycle.flow,3)+' л/мин'+(activeCycle.source==='auto'?' · жужжание +2 с':''):'';
     el.cycles.textContent=String(cycles.length);
     requestAnimationFrame(draw);
   }
@@ -291,11 +299,15 @@
     setStatus(mode==='auto'?'Продувка обнаружена — идёт учёт':'Ручная продувка — идёт учёт','active');
     refreshButtons();
   }
-  function endCycle(endTime,reason=''){
+  function endCycle(endTime,reason='',naturalEnd=true){
     if(!activeCycle)return;
     const c=activeCycle;
-    const elapsed=Math.max(0,endTime-c.start);
-    if(elapsed>=50)cycles.push({startedAt:c.startedAt,flow:c.flow,elapsed,volume:c.flow*elapsed/60000,source:c.source});
+    const buzzElapsed=Math.max(0,endTime-c.start);
+    // Короткий писк сюда не попадает: 10-секундный фильтр остаётся по жужжанию.
+    // При принудительном прерывании не предполагаем недоказанную секунду после звука.
+    const extraMs=c.source==='auto'?(naturalEnd?AUTO_OFFSET_MS:AUTO_LEAD_MS):0;
+    const elapsed=buzzElapsed+extraMs;
+    if(buzzElapsed>=50)cycles.push({startedAt:c.startedAt,flow:c.flow,buzzElapsed,extraMs,elapsed,volume:c.flow*elapsed/60000,source:c.source,interrupted:!naturalEnd});
     activeCycle=null;
     persist();renderLog();refreshButtons();
     setStatus(monitoring?'Ожидание жужжания':context?'Микрофон подключён':'Микрофон не подключён',monitoring||context?'good':'');
@@ -415,7 +427,7 @@
         pendingCycle=null;
         startCycle(c.start,'auto',c.flow);
         refreshButtons();
-        message('Рабочий цикл подтверждён (>10 с). Объём учитывается с начала жужжания.');
+        message('Рабочий цикл подтверждён (>10 с). Для объёма добавляются 1 с до и 1 с после жужжания.');
       }
     }else if(activeCycle.source==='auto'){
       if(recentScore<low){
@@ -513,7 +525,7 @@
     if(pendingCycle)discardPending('Сигнал короче 10 с не учтён. '+reason);
     if(activeCycle&&activeCycle.source==='auto'){
       // При принудительной остановке невозможно восстановить недостающие аудиоданные.
-      endCycle(now(),reason);
+      endCycle(now(),reason,false);
     }else message(reason);
     onCandidate=null;offCandidate=null;pendingCycle=null;
     unlockScreen();refreshButtons();
@@ -590,10 +602,13 @@
   el.downloadCsv.addEventListener('click',()=>{
     if(!cycles.length){message('Сначала заверши хотя бы одну продувку.');return;}
     const quote=s=>'"'+String(s).replaceAll('"','""')+'"';
-    const lines=[['Номер','Время начала','Источник','Расход, л/мин','Длительность, сек','Объём, л'].map(quote).join(';')];
-    cycles.forEach((c,i)=>lines.push([i+1,c.startedAt||'',c.source||'',c.flow.toFixed(4).replace('.',','),(c.elapsed/1000).toFixed(3).replace('.',','),c.volume.toFixed(6).replace('.',',')].map(quote).join(';')));
+    const lines=[['Номер','Начало жужжания','Источник','Расход, л/мин','Жужжание, с','Поправка, с','Расчётное время, с','Объём, л','Прерван'].map(quote).join(';')];
+    const fmt=n=>n.toFixed(3).replace('.',',');
+    cycles.forEach((c,i)=>lines.push([i+1,c.startedAt||'',c.source||'',c.flow.toFixed(4).replace('.',','),fmt((c.buzzElapsed??c.elapsed)/1000),fmt((c.extraMs??0)/1000),fmt(c.elapsed/1000),c.volume.toFixed(6).replace('.',','),c.interrupted?'Да':'Нет'].map(quote).join(';')));
     const totalsRow=totals();
-    lines.push(['Итого','','','', (totalsRow.time/1000).toFixed(3).replace('.',','),totalsRow.volume.toFixed(6).replace('.',',')].map(quote).join(';'));
+    const totalBuzz=cycles.reduce((sum,c)=>sum+(c.buzzElapsed??c.elapsed),0);
+    const totalExtra=cycles.reduce((sum,c)=>sum+(c.extraMs??0),0);
+    lines.push(['Итого','','','',fmt(totalBuzz/1000),fmt(totalExtra/1000),fmt(totalsRow.time/1000),totalsRow.volume.toFixed(6).replace('.',','),''].map(quote).join(';'));
     const blob=new Blob(['\uFEFF',lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
     a.href=url;a.download='produvki-'+new Date().toISOString().slice(0,10)+'.csv';
