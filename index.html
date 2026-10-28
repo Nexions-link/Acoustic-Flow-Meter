@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="Автоматический расчёт объёма газовой смеси по расходу и длительности жужжания прибора">
+  <title>Акустический счётчик объёма смеси</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1220; --panel:#162132; --panel2:#1c2a3e; --border:#324053; --text:#f4f7fb; --muted:#a9b6c9; --accent:#70b7ff; --accent2:#3e85d8; --good:#6cd8ab; --warn:#ffc877; --bad:#ff8585; }
+    * { box-sizing:border-box; }
+    html { min-height:100%; -webkit-text-size-adjust:100%; }
+    body { margin:0; min-height:100vh; min-height:100dvh; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--text); background:radial-gradient(ellipse at 50% -10%,#1a3452 0%,var(--bg) 65%); }
+    button,input { font:inherit; }
+    button { cursor:pointer; min-height:45px; border-radius:11px; border:1px solid var(--border); background:var(--panel2); color:var(--text); padding:10px 13px; font-weight:650; }
+    button.primary { background:var(--accent2); border-color:#74b4ff; color:#fff; }
+    button:disabled { cursor:not-allowed; opacity:.38; }
+    button:focus-visible,input:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+    button.danger { color:#ffb3b3; }
+    button[aria-pressed="true"] { background:#1a5c4a; border-color:var(--good); }
+    .app { max-width:790px; margin:auto; padding:26px 17px calc(28px + env(safe-area-inset-bottom)); }
+    h1 { margin:0; font-size:clamp(22px,5.7vw,31px); font-weight:760; letter-spacing:-.035em; }
+    h2 { margin:0 0 14px; font-size:17px; letter-spacing:-.01em; }
+    header p { font-size:14px; line-height:1.5; margin:8px 0 19px; color:var(--muted); }
+    .panel { background:linear-gradient(145deg,rgba(29,45,65,.96),rgba(18,30,46,.98)); border:1px solid var(--border); border-radius:17px; padding:18px; margin-top:13px; }
+    .status-line { display:flex; gap:9px; align-items:center; color:var(--muted); font-size:13px; font-weight:650; margin:0 0 8px; }
+    .dot { background:#6d7c8b; width:10px; height:10px; display:inline-block; border-radius:50%; flex-shrink:0; }
+    .dot.good { background:var(--good); box-shadow:0 0 0 4px rgba(108,216,171,.12); }
+    .dot.active { background:var(--warn); box-shadow:0 0 0 4px rgba(255,200,119,.14); }
+    .dot.bad { background:var(--bad); }
+    .total-label { color:var(--muted); font-size:13px; }
+    .total { font-weight:780; font-size:clamp(38px,10vw,65px); letter-spacing:-.06em; line-height:1.27; font-variant-numeric:tabular-nums; }
+    .total .unit { font-size:.38em; font-weight:600; letter-spacing:0; color:var(--muted); }
+    .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid var(--border); gap:10px; margin-top:16px; padding-top:15px; }
+    .stat-label { font-size:12px; line-height:1.25; color:var(--muted); margin-bottom:6px; }
+    .stat-value { font-size:clamp(15px,4vw,22px); font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .field { display:flex; flex-direction:column; gap:8px; }
+    .field label { font-weight:650; font-size:13px; }
+    input[type=text] { height:49px; background:#0c1828; border:1px solid #5b6b81; border-radius:10px; padding:0 12px; font-size:21px; color:var(--text); width:100%; font-variant-numeric:tabular-nums; }
+    input:disabled { opacity:.65; }
+    small,.small { color:var(--muted); font-size:12px; line-height:1.5; }
+    .btnrow { display:flex; gap:9px; flex-wrap:wrap; }
+    .btnrow button { flex:1 1 155px; }
+    .btnrow.narrow button { flex:1 1 140px; }
+    .statebox { border:1px solid var(--border); border-radius:11px; background:rgba(7,15,26,.36); padding:12px 13px; margin:12px 0; font-size:13px; line-height:1.5; }
+    .steps { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin:13px 0; }
+    .step { display:flex; align-items:flex-start; gap:9px; font-size:12px; border:1px solid var(--border); border-radius:12px; padding:11px; min-height:52px; color:var(--muted); }
+    .step strong { display:block; color:var(--text); margin-bottom:2px; font-size:13px; }
+    .step .check { font-size:18px; line-height:1; color:var(--muted); }
+    .step.done { border-color:#46745e; }
+    .step.done .check { color:var(--good); }
+    .meter-top { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:7px; font-size:12px; color:var(--muted); }
+    .meter { background:#0e1827; border-radius:99px; height:11px; overflow:hidden; border:1px solid var(--border); }
+    .meterfill { background:linear-gradient(90deg,#5392c9,#8ed6ff); width:0; height:100%; transition:width .12s; }
+    .meterfill.hot { background:linear-gradient(90deg,#e6a64b,#ffe19d); }
+    .range-line { display:flex; align-items:center; gap:12px; margin-top:15px; }
+    .range-line label { font-size:12px; color:var(--muted); min-width:110px; }
+    input[type=range] { flex:1; min-width:70px; accent-color:var(--accent); }
+    .range-value { min-width:38px; text-align:right; font-size:13px; font-variant-numeric:tabular-nums; }
+    .footnote { color:var(--muted); font-size:12px; line-height:1.55; margin:12px 0 0; }
+    .log-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:7px; }
+    .log-actions { display:flex; flex-wrap:wrap; gap:7px; }
+    .log-actions button { font-size:12px; min-height:35px; padding:7px 10px; }
+    table { width:100%; border-collapse:collapse; margin-top:6px; font-size:13px; font-variant-numeric:tabular-nums; }
+    th { text-align:right; color:var(--muted); font-size:11px; font-weight:650; padding:10px 4px; border-bottom:1px solid var(--border); }
+    td { text-align:right; padding:11px 4px; border-bottom:1px solid rgba(73,91,111,.45); }
+    th:first-child,td:first-child { text-align:left; }
+    .table-scroll { overflow-x:auto; }
+    .empty { text-align:center; font-size:12px; color:var(--muted); padding:18px 0 8px; }
+    .alert { color:var(--warn); background:rgba(229,164,62,.08); border:1px solid rgba(229,164,62,.35); padding:10px 12px; border-radius:10px; font-size:12px; line-height:1.5; margin-top:12px; }
+    .hidden { display:none!important; }
+    @media(max-width:450px) { .app { padding:21px 12px calc(24px + env(safe-area-inset-bottom)); } .panel { padding:14px; } .steps {grid-template-columns:1fr;} .grid2 {grid-template-columns:1fr;} .stats {gap:5px;} .stat-value { font-size:17px; } }
+    @media(prefers-reduced-motion:reduce){ .meterfill{transition:none;} }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Акустический счётчик смеси</h1>
+    <p>Объём по расходу и длительности жужжания прибора. Обработка звука выполняется на устройстве.</p>
+  </header>
+
+  <section class="panel" aria-label="Результаты измерений">
+    <div class="status-line"><span id="statusDot" class="dot"></span><span id="status">Микрофон не подключён</span></div>
+    <div class="total-label">Суммарно пропущено</div>
+    <div class="total"><span id="total">0,000</span> <span class="unit">л</span></div>
+    <div class="stats">
+      <div><div class="stat-label">Текущая продувка</div><div class="stat-value" id="currentTime">00:00,0</div></div>
+      <div><div class="stat-label">Общее время</div><div class="stat-value" id="sumTime">00:00,0</div></div>
+      <div><div class="stat-label">Циклов завершено</div><div class="stat-value" id="cycles">0</div></div>
+    </div>
+    <div class="statebox">Текущий цикл: <strong id="currentVolume">0,000 л</strong><span id="cycleFlowInfo" class="small"></span></div>
+  </section>
+
+  <section class="panel" aria-label="Параметры продувки">
+    <h2>1. Укажи расход смеси</h2>
+    <div class="field">
+      <label for="flow">Расход, л/мин</label>
+      <input id="flow" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Например, 1,5">
+      <small>Допустимы точка и запятая. Расход фиксируется на весь текущий цикл.</small>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Микрофон и обучение">
+    <h2>2. Обучи приложение звуку прибора</h2>
+    <div class="btnrow"><button class="primary" id="microphone">Включить микрофон</button><button id="microphoneOff" disabled>Отключить микрофон</button></div>
+    <div class="steps">
+      <div id="offStep" class="step"><span class="check" id="offCheck">○</span><div><strong>Прибор молчит</strong>Эталон фонового шума</div></div>
+      <div id="onStep" class="step"><span class="check" id="onCheck">○</span><div><strong>Прибор жужжит</strong>Эталон рабочего звука</div></div>
+    </div>
+    <div class="btnrow narrow"><button id="learnOff" disabled>Записать тишину · 2 с</button><button id="learnOn" disabled>Записать жужжание · 2 с</button></div>
+    <div class="statebox" id="help">Включи микрофон, запиши фон при выключенном приборе, затем — звук работающего прибора. Во время записи не разговаривай и держи телефон в одном положении.</div>
+    <div class="meter-top"><span>Похожесть на звук прибора</span><span id="scoreLabel">—</span></div>
+    <div class="meter" role="progressbar" aria-label="Похожесть на рабочий звук" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="scoreMeter"><div class="meterfill" id="scoreBar"></div></div>
+    <div class="range-line"><label for="sensitivity">Порог срабатывания</label><input id="sensitivity" type="range" min="40" max="85" value="58" step="1"><span class="range-value" id="sensitivityLabel">58%</span></div>
+    <p class="footnote">Более высокий порог уменьшает ложные срабатывания, но может пропускать тихое жужжание. Запуск подтверждается через 0,4 с устойчивого звука, остановка — после 0,7 с его отсутствия; времена корректируются на задержку подтверждения.</p>
+  </section>
+
+  <section class="panel" aria-label="Управление учётом">
+    <h2>3. Запусти автоматический учёт</h2>
+    <div class="btnrow"><button id="autoStart" class="primary" disabled>Начать автоучёт</button><button id="autoStop" disabled>Остановить автоучёт</button></div>
+    <div class="alert" id="warning">На iPhone страница должна быть открыта с включённым экраном. При блокировке или переключении приложения учёт может прерваться. Прототип не заменяет поверенный газовый счётчик.</div>
+    <p class="footnote">Для проверки расчёта без прибора можно вручную запустить и остановить один цикл:</p>
+    <div class="btnrow narrow"><button id="manualStart">Пуск вручную</button><button id="manualStop" disabled>Стоп вручную</button></div>
+  </section>
+
+  <section class="panel" aria-label="Журнал продувок">
+    <div class="log-header"><h2 style="margin:0">Журнал циклов</h2><div class="log-actions"><button id="downloadCsv">Экспорт CSV</button><button id="reset" class="danger">Сбросить журнал</button></div></div>
+    <div id="empty" class="empty">Завершённых циклов пока нет</div>
+    <div class="table-scroll"><table id="logTable" class="hidden"><thead><tr><th>№</th><th>Расход, л/мин</th><th>Время, с</th><th>Объём, л</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <p class="footnote">Суммарный объём складывается из всех циклов, даже если расход между ними менялся. Журнал завершённых циклов сохраняется только в этом браузере. Аудиозаписи никуда не передаются и не сохраняются.</p>
+  </section>
+</div>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const el = Object.fromEntries(['flow','status','statusDot','total','currentTime','sumTime','cycles','currentVolume','cycleFlowInfo',
+    'microphone','microphoneOff','learnOff','learnOn','offStep','onStep','offCheck','onCheck','help','scoreLabel','scoreMeter','scoreBar',
+    'sensitivity','sensitivityLabel','autoStart','autoStop','manualStart','manualStop','warning','downloadCsv','reset','empty','logTable','rows'].map(id=>[id,$(id)]));
+  const STORAGE='acoustic-mixture-counter-v1';
+  const storageGet=key=>{try{return localStorage.getItem(key);}catch(_){return null;}};
+  const storageSet=(key,value)=>{try{localStorage.setItem(key,value);return true;}catch(_){return false;}};
+  const MS_ON=400, MS_OFF=700, CAPTURE_MS=2000, FRAMES_PER_SECOND=16;
+  let stream=null, context=null, analyser=null, source=null, values=null;
+  let offProfile=null, onProfile=null, selectedBands=[];
+  let monitoring=false, capture=null, loopHandle=null, screenLock=null;
+  let onCandidate=null, offCandidate=null, activeCycle=null, recentScore=0;
+  let cycles=[];
+  let lastEvent='';
+  const storedFlow = storageGet(STORAGE+'-flow');
+  if(storedFlow) el.flow.value=storedFlow;
+  try {const json=JSON.parse(storageGet(STORAGE+'-cycles')||'[]'); if(Array.isArray(json)) cycles=json.filter(c=>typeof c?.elapsed==='number'&&typeof c?.flow==='number'&&typeof c?.volume==='number'&&Number.isFinite(c.volume)&&c.volume>=0&&c.elapsed>=0).slice(-5000);}catch(_){}
+  const savedThreshold = Number(storageGet(STORAGE+'-threshold'));
+  if(savedThreshold>=40&&savedThreshold<=85) el.sensitivity.value=savedThreshold;
+
+  const decimal=(n,d=3)=>Number.isFinite(n)?n.toLocaleString('ru-RU',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
+  const seconds=(ms)=>{
+    const dec=Math.max(0,Math.floor(ms/100));
+    const min=Math.floor(dec/600), s=Math.floor((dec%600)/10), tenth=dec%10;
+    return String(min).padStart(2,'0')+':'+String(s).padStart(2,'0')+','+tenth;
+  };
+  const getFlow=()=>{
+    const text=el.flow.value.trim().replace(',','.');
+    if(!text || !/^\d+(?:\.\d+)?$/.test(text))return null;
+    const n=Number(text);
+    return n>0&&Number.isFinite(n)&&n<=100000?n:null;
+  };
+  const totals=()=>cycles.reduce((a,c)=>(a.time+=c.elapsed,a.volume+=c.volume,a),{time:0,volume:0});
+  const now=()=>performance.now();
+  const persist=()=>{if(!storageSet(STORAGE+'-cycles',JSON.stringify(cycles)))message('Не удалось сохранить журнал в этом браузере. Экспортируй CSV.','warn');};
+  const message=(s,kind='normal')=>{lastEvent=s;el.help.textContent=s;el.help.style.color=kind==='warn'?'var(--warn)':'var(--text)';};
+  function setStatus(label,cls='') {el.status.textContent=label;el.statusDot.className='dot'+(cls?' '+cls:'');}
+  function refreshButtons(){
+    const hasMic=!!context&&!!stream;
+    const isCapturing=!!capture;
+    const ready=!!offProfile&&!!onProfile&&selectedBands.length>0;
+    el.microphone.disabled=hasMic;
+    el.microphoneOff.disabled=!hasMic;
+    el.learnOff.disabled=!hasMic||isCapturing||monitoring||!!activeCycle;
+    el.learnOn.disabled=!hasMic||isCapturing||monitoring||!!activeCycle;
+    el.autoStart.disabled=!hasMic||!ready||monitoring||isCapturing||!!activeCycle||!getFlow();
+    el.autoStop.disabled=!monitoring;
+    el.manualStart.disabled=!!activeCycle||monitoring||isCapturing||!getFlow();
+    el.manualStop.disabled=!activeCycle||activeCycle.source!=='manual';
+    el.flow.disabled=!!activeCycle;
+    el.sensitivity.disabled=!!capture;
+  }
+  function draw(){
+    const t=totals(), elapsed=activeCycle?Math.max(0,now()-activeCycle.start):0;
+    const volume=activeCycle?activeCycle.flow*elapsed/60000:0;
+    el.total.textContent=decimal(t.volume+volume);
+    el.sumTime.textContent=seconds(t.time+elapsed);
+    el.currentTime.textContent=seconds(elapsed);
+    el.currentVolume.textContent=decimal(volume)+' л';
+    el.cycleFlowInfo.textContent=activeCycle?' · '+decimal(activeCycle.flow,3)+' л/мин':'';
+    el.cycles.textContent=String(cycles.length);
+    requestAnimationFrame(draw);
+  }
+  function renderLog(){
+    el.empty.classList.toggle('hidden',cycles.length>0);
+    el.logTable.classList.toggle('hidden',!cycles.length);
+    el.rows.replaceChildren();
+    cycles.slice(-30).reverse().forEach((c,i)=>{
+      const tr=document.createElement('tr');
+      [cycles.length-i,decimal(c.flow,3),decimal(c.elapsed/1000,2),decimal(c.volume)].forEach(value=>{
+        const td=document.createElement('td');td.textContent=value;tr.appendChild(td);
+      });
+      el.rows.appendChild(tr);
+    });
+  }
+  function startCycle(startTime,mode){
+    if(activeCycle||!getFlow())return;
+    activeCycle={start:startTime,flow:getFlow(),source:mode,startedAt:new Date(Date.now()-(now()-startTime)).toISOString()};
+    setStatus(mode==='auto'?'Продувка обнаружена — идёт учёт':'Ручная продувка — идёт учёт','active');
+    refreshButtons();
+  }
+  function endCycle(endTime,reason=''){
+    if(!activeCycle)return;
+    const c=activeCycle;
+    const elapsed=Math.max(0,endTime-c.start);
+    if(elapsed>=50)cycles.push({startedAt:c.startedAt,flow:c.flow,elapsed,volume:c.flow*elapsed/60000,source:c.source});
+    activeCycle=null;
+    persist();renderLog();refreshButtons();
+    setStatus(monitoring?'Ожидание жужжания':context?'Микрофон подключён':'Микрофон не подключён',monitoring||context?'good':'');
+    if(reason)message(reason);
+  }
+  function bandPower(indexes){
+    // Усреднение спектральной мощности в логарифмических полосах 60–5000 Гц.
+    const sampleRate=context.sampleRate, fftSize=analyser.fftSize;
+    const res=[];
+    for(const [f1,f2] of indexes){
+      const a=Math.max(1,Math.ceil(f1*fftSize/sampleRate));
+      const b=Math.min(values.length-1,Math.max(a,Math.floor(f2*fftSize/sampleRate)));
+      let sum=0;
+      for(let j=a;j<=b;j++){
+        const db=Number.isFinite(values[j])?Math.max(-140,values[j]):-140;
+        sum+=Math.pow(10,db/10);
+      }
+      res.push(10*Math.log10(Math.max(1e-14,sum/(b-a+1))));
+    }
+    return res;
+  }
+  const bandEdges=Array.from({length:21},(_,i)=>60*Math.pow(5000/60,i/20));
+  const bands=bandEdges.slice(0,-1).map((start,i)=>[start,bandEdges[i+1]]);
+  function features(){
+    analyser.getFloatFrequencyData(values);
+    return bandPower(bands);
+  }
+  function rebuildModel(){
+    if(!offProfile||!onProfile){selectedBands=[];return;}
+    const diffs=offProfile.map((base,i)=>({i,diff:onProfile[i]-base}));
+    selectedBands=diffs.filter(x=>x.diff>=6).sort((a,b)=>b.diff-a.diff).slice(0,12);
+    if(selectedBands.length<2){
+      selectedBands=[];
+      message('Образцы слишком похожи. Поднеси микрофон ближе к прибору и повтори обучение в тишине и при работе.','warn');
+      return;
+    }
+    message('Обучение завершено. Теперь введи расход и нажми «Начать автоучёт».');
+  }
+  function scoreFor(curr){
+    if(selectedBands.length<2)return 0;
+    let sum=0,total=0;
+    for(const {i,diff} of selectedBands){
+      const observed=curr[i]-offProfile[i];
+      const weight=Math.min(25,diff);
+      const ratio=Math.max(0,Math.min(1,(observed/diff-0.08)/0.82));
+      sum+=ratio*weight;
+      total+=weight;
+    }
+    return total?Math.max(0,Math.min(1,sum/total)):0;
+  }
+  function analyze(t){
+    if(!analyser||!values)return;
+    const spectrum=features();
+    if(capture){
+      capture.frames.push(spectrum);
+      if(t-capture.start>=CAPTURE_MS){
+        const avg=spectrum.map((_,i)=>capture.frames.reduce((sum,frame)=>sum+frame[i],0)/capture.frames.length);
+        if(capture.kind==='off'){
+          offProfile=avg;
+          el.offStep.classList.add('done');el.offCheck.textContent='✓';
+          message('Фоновый шум записан. Включи прибор и запиши жужжание.');
+        }else{
+          onProfile=avg;
+          el.onStep.classList.add('done');el.onCheck.textContent='✓';
+          message('Звук работающего прибора записан.');
+        }
+        capture=null;
+        rebuildModel();refreshButtons();
+      }else{
+        message('Идёт запись: '+(capture.kind==='off'?'прибор выключен':'прибор жужжит')+' · '+Math.ceil((CAPTURE_MS-(t-capture.start))/1000)+' с');
+      }
+      return;
+    }
+    recentScore=scoreFor(spectrum);
+    const pct=Math.round(recentScore*100);
+    el.scoreLabel.textContent=selectedBands.length?pct+'%':'Сначала обучи';
+    el.scoreBar.style.width=pct+'%';
+    el.scoreBar.classList.toggle('hot',monitoring&&recentScore>=Number(el.sensitivity.value)/100);
+    el.scoreMeter.setAttribute('aria-valuenow',pct);
+    if(!monitoring)return;
+    const high=Number(el.sensitivity.value)/100;
+    const low=Math.max(0.15,high-0.13);
+    if(!activeCycle){
+      if(recentScore>=high){
+        if(onCandidate===null)onCandidate=t;
+        if(t-onCandidate>=MS_ON){startCycle(onCandidate,'auto');onCandidate=null;}
+      }else onCandidate=null;
+    }else if(activeCycle.source==='auto'){
+      if(recentScore<low){
+        if(offCandidate===null)offCandidate=t;
+        if(t-offCandidate>=MS_OFF){endCycle(offCandidate);offCandidate=null;}
+      }else offCandidate=null;
+    }
+  }
+  function processFrame(t){
+    if(context&&context.state==='running'){
+      if(!processFrame.next||t>=processFrame.next){
+        processFrame.next=t+(1000/FRAMES_PER_SECOND);
+        analyze(t);
+      }
+    }
+    loopHandle=requestAnimationFrame(processFrame);
+  }
+  async function micOn(){
+    if(!navigator.mediaDevices?.getUserMedia){
+      message('Микрофон недоступен. Открой приложение по HTTPS в Safari/Chrome. Из локального HTML-файла доступ может блокироваться.','warn');return;
+    }
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
+      context=new (window.AudioContext||window.webkitAudioContext)();
+      await context.resume();
+      source=context.createMediaStreamSource(stream);
+      analyser=context.createAnalyser();
+      analyser.fftSize=4096;
+      analyser.smoothingTimeConstant=0.35;
+      values=new Float32Array(analyser.frequencyBinCount);
+      source.connect(analyser); // Выход на динамик не подключаем.
+      stream.getAudioTracks().forEach(track=>{
+        track.addEventListener('ended',()=>interrupt('Микрофон отключён. Учёт остановлен.'));
+        track.addEventListener('mute',()=>{if(monitoring)interrupt('Захват звука системой приостановлен. Учёт остановлен.');});
+      });
+      context.addEventListener('statechange',()=>{if(context&&context.state!=='running'&&monitoring)interrupt('Аудиосеанс приостановлен системой. Учёт остановлен.');});
+      if(!loopHandle)loopHandle=requestAnimationFrame(processFrame);
+      setStatus('Микрофон подключён','good');
+      message('Микрофон подключён. Запиши оба образца звука.');
+    }catch(err){
+      console.error(err);
+      if(stream)stream.getTracks().forEach(track=>track.stop());
+      stream=null;
+      if(context){try{await context.close();}catch(_){}}context=null;
+      message('Не удалось включить микрофон. Разреши доступ в настройках браузера и используй защищённую HTTPS-страницу.','warn');
+      setStatus('Нет доступа к микрофону','bad');
+    }
+    refreshButtons();
+  }
+  async function micOff(){
+    if(monitoring)stopMonitoring('Автоучёт остановлен: микрофон отключён.');
+    if(activeCycle&&activeCycle.source==='manual')endCycle(now(),'Ручной цикл завершён.');
+    capture=null;
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    stream=null;
+    if(context){try{await context.close();}catch(_){}}context=null;
+    source=null;analyser=null;values=null;
+    if(loopHandle){cancelAnimationFrame(loopHandle);loopHandle=null;}
+    recentScore=0;
+    el.scoreBar.style.width='0%';
+    setStatus('Микрофон не подключён');refreshButtons();
+  }
+  async function startCapture(kind){
+    if(!context||monitoring||activeCycle||capture)return;
+    try{await context.resume();}catch(_){message('Не удалось возобновить аудиосеанс. Повтори включение микрофона.','warn');return;}
+    if(context.state!=='running'){message('Аудиосеанс приостановлен. Нажми кнопку записи ещё раз.','warn');return;}
+    capture={kind,start:now(),frames:[]};
+    if(kind==='off'){offProfile=null;el.offStep.classList.remove('done');el.offCheck.textContent='○';}
+    else{onProfile=null;el.onStep.classList.remove('done');el.onCheck.textContent='○';}
+    selectedBands=[];
+    message('Запись образца. Не перемещай телефон и не разговаривай.');
+    refreshButtons();
+  }
+  async function lockScreen(){
+    if(!('wakeLock' in navigator))return;
+    try{screenLock=await navigator.wakeLock.request('screen');}catch(_){/* optional, user must keep screen on */}
+  }
+  async function unlockScreen(){
+    if(screenLock){try{await screenLock.release();}catch(_){}}
+    screenLock=null;
+  }
+  async function startMonitoring(){
+    if(!context||!selectedBands.length||!getFlow()||monitoring||activeCycle)return;
+    try{await context.resume();}catch(_){message('Не удалось возобновить микрофон.','warn');return;}
+    if(context.state!=='running'){message('Микрофон приостановлен. Повтори запуск.','warn');return;}
+    monitoring=true;
+    onCandidate=null;offCandidate=null;
+    setStatus('Ожидание жужжания','good');
+    message('Автоучёт включён: начну отсчёт при устойчивом жужжании.');
+    lockScreen();refreshButtons();
+  }
+  function stopMonitoring(reason='Автоучёт остановлен.'){
+    if(!monitoring)return;
+    monitoring=false;
+    if(activeCycle&&activeCycle.source==='auto'){
+      // При принудительной остановке невозможно восстановить недостающие аудиоданные.
+      endCycle(now(),reason);
+    }else message(reason);
+    onCandidate=null;offCandidate=null;
+    unlockScreen();refreshButtons();
+    setStatus(context?'Микрофон подключён':'Микрофон не подключён',context?'good':'');
+  }
+  function interrupt(reason){
+    if(monitoring)stopMonitoring(reason);
+    if(activeCycle&&activeCycle.source==='manual')endCycle(now(),reason);
+    if(capture){capture=null;message(reason,'warn');}
+    setStatus('Учёт прерван','bad');
+    refreshButtons();
+  }
+  el.microphone.addEventListener('click',micOn);
+  el.microphoneOff.addEventListener('click',micOff);
+  el.learnOff.addEventListener('click',()=>startCapture('off'));
+  el.learnOn.addEventListener('click',()=>startCapture('on'));
+  el.autoStart.addEventListener('click',startMonitoring);
+  el.autoStop.addEventListener('click',()=>stopMonitoring());
+  el.manualStart.addEventListener('click',()=>{if(monitoring)return;startCycle(now(),'manual');});
+  el.manualStop.addEventListener('click',()=>{if(activeCycle?.source==='manual')endCycle(now());});
+  el.flow.addEventListener('input',()=>{
+    storageSet(STORAGE+'-flow',el.flow.value);
+    refreshButtons();
+  });
+  el.sensitivity.addEventListener('input',()=>{
+    el.sensitivityLabel.textContent=el.sensitivity.value+'%';
+    storageSet(STORAGE+'-threshold',el.sensitivity.value);
+  });
+  el.reset.addEventListener('click',()=>{
+    if(activeCycle||monitoring){message('Сначала останови учёт, затем сбрасывай журнал.','warn');return;}
+    if(!cycles.length)return;
+    if(!window.confirm('Удалить журнал и обнулить суммарный объём?'))return;
+    cycles=[];persist();renderLog();message('Журнал очищен.');
+  });
+  el.downloadCsv.addEventListener('click',()=>{
+    if(!cycles.length){message('Сначала заверши хотя бы одну продувку.');return;}
+    const quote=s=>'"'+String(s).replaceAll('"','""')+'"';
+    const lines=[['Номер','Время начала','Источник','Расход, л/мин','Длительность, сек','Объём, л'].map(quote).join(';')];
+    cycles.forEach((c,i)=>lines.push([i+1,c.startedAt||'',c.source||'',c.flow.toFixed(4).replace('.',','),(c.elapsed/1000).toFixed(3).replace('.',','),c.volume.toFixed(6).replace('.',',')].map(quote).join(';')));
+    const totalsRow=totals();
+    lines.push(['Итого','','','', (totalsRow.time/1000).toFixed(3).replace('.',','),totalsRow.volume.toFixed(6).replace('.',',')].map(quote).join(';'));
+    const blob=new Blob(['\uFEFF',lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download='produvki-'+new Date().toISOString().slice(0,10)+'.csv';
+    a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
+  });
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden&&(monitoring||activeCycle||capture))interrupt('Страница скрыта. Учёт остановлен: при свёрнутом браузере микрофон может не работать.');
+  });
+  window.addEventListener('pagehide',()=>{
+    if(monitoring)stopMonitoring('Страница закрыта. Учёт прерван.');
+    if(activeCycle&&activeCycle.source==='manual')endCycle(now());
+  });
+  if(!window.isSecureContext){el.warning.textContent='Для автоматического режима требуется открыть страницу через HTTPS (или localhost). Из обычного файла доступ к микрофону на iPhone не гарантируется. Экран должен оставаться включённым.';}
+  el.sensitivityLabel.textContent=el.sensitivity.value+'%';
+  renderLog();refreshButtons();requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
