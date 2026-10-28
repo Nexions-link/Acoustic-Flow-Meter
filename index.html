@@ -51,6 +51,12 @@
     .channel-tabs button { aspect-ratio:1 / 1; min-width:0; width:100%; min-height:0; padding:0; border-radius:10px; font-size:clamp(17px,5vw,23px); font-weight:800; font-variant-numeric:tabular-nums; }
     .channel-tabs button[aria-selected="true"] { background:var(--accent2); border-color:#90c8ff; color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); }
     .channel-tabs button:disabled { opacity:.55; }
+    .quick-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; background:rgba(22,33,50,.95); border:1px solid var(--border); border-radius:14px; padding:10px; margin-top:10px; }
+    .quick-actions > div { min-width:0; }
+    .quick-actions button { display:block; width:100%; min-height:50px; padding:9px 7px; line-height:1.2; font-size:clamp(12px,3.5vw,15px); white-space:normal; }
+    .quick-actions button.stop { border-color:#7a5151; color:#ffcdcd; background:#382730; }
+    .quick-actions button[hidden] { display:none!important; }
+    @media(max-width:450px) { .quick-actions { gap:7px; padding:8px; margin-top:8px; } .quick-actions button { min-height:48px; } }
     .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid var(--border); gap:10px; margin-top:16px; padding-top:15px; }
     .stat-label { font-size:12px; line-height:1.25; color:var(--muted); margin-bottom:6px; }
     .stat-value { font-size:clamp(15px,4vw,22px); font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -113,6 +119,17 @@
     </div>
   </nav>
 
+  <section class="quick-actions" aria-label="Основное управление прибором">
+    <div>
+      <button class="primary" id="microphone">Включить микрофон</button>
+      <button class="stop" id="microphoneOff" hidden disabled>Отключить микрофон</button>
+    </div>
+    <div>
+      <button class="primary" id="autoStart" disabled>Начать автоучёт</button>
+      <button class="stop" id="autoStop" hidden disabled>Остановить автоучёт</button>
+    </div>
+  </section>
+
   <section class="panel" aria-label="Результаты измерений">
     <div class="status-line"><span id="statusDot" class="dot"></span><span id="status">Микрофон не подключён</span></div>
     <div class="summary-top">
@@ -147,7 +164,7 @@
 
   <section class="panel" aria-label="Микрофон и обучение">
     <h2>2. Обучи приложение звуку прибора</h2>
-    <div class="btnrow"><button class="primary" id="microphone">Включить микрофон</button><button id="microphoneOff" disabled>Отключить микрофон</button></div>
+    <p class="footnote">Микрофон включается кнопкой наверху, под вкладками. Обучение звуку доступно ниже.</p>
     <div class="steps">
       <div id="offStep" class="step"><span class="check" id="offCheck">○</span><div><strong>Прибор молчит</strong>Эталон фонового шума</div></div>
       <div id="onStep" class="step"><span class="check" id="onCheck">○</span><div><strong>Прибор жужжит</strong>Эталон рабочего звука</div></div>
@@ -169,8 +186,8 @@
   </section>
 
   <section class="panel" aria-label="Управление учётом">
-    <h2>3. Запусти автоматический учёт</h2>
-    <div class="btnrow"><button id="autoStart" class="primary" disabled>Начать автоучёт</button><button id="autoStop" disabled>Остановить автоучёт</button></div>
+    <h2>3. Ручной режим и ограничения</h2>
+    <p class="footnote">Запуск и остановка автоучёта находятся наверху, рядом с управлением микрофоном.</p>
     <div class="alert" id="warning">На iPhone страница должна быть открыта с включённым экраном. При блокировке или переключении приложения учёт может прерваться. Прототип не заменяет поверенный газовый счётчик.</div>
     <p class="footnote">Для проверки расчёта без прибора можно вручную запустить и остановить один цикл:</p>
     <div class="btnrow narrow"><button id="manualStart">Пуск вручную</button><button id="manualStop" disabled>Стоп вручную</button></div>
@@ -336,6 +353,11 @@
     const ready=profileReady();
     el.microphone.disabled=hasMic;
     el.microphoneOff.disabled=!hasMic;
+    // В каждом компактном слоте отображаем одну актуальную кнопку.
+    el.microphone.hidden=hasMic;
+    el.microphoneOff.hidden=!hasMic;
+    el.autoStart.hidden=monitoring;
+    el.autoStop.hidden=!monitoring;
     el.learnOff.disabled=!hasMic||isCapturing||monitoring||!!activeCycle;
     el.learnOn.disabled=!hasMic||isCapturing||monitoring||!!activeCycle;
     el.autoStart.disabled=!hasMic||!ready||monitoring||isCapturing||!!activeCycle||!getFlow();
