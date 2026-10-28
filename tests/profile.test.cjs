@@ -100,3 +100,67 @@ test('deleting profile keeps journal independent',()=>{
   assert.equal(app.element('exportProfile').disabled,true);
   assert.equal(store.has('acoustic-mixture-counter-v1-cycles'),true);
 });
+
+test('completed auto cycle adds 1s before and 1s after the sound',async()=>{
+  const app=boot(new Map([[profileKey,JSON.stringify(sampleProfile())]]));
+  app.element('flow').value='1,5';
+  await app.callback('microphone','click')();
+  await app.callback('autoStart','click')();
+  app.setAudio(-82);
+  app.frame(1000);app.frame(1450);app.frame(11250);app.frame(12900);
+  app.setAudio(-105);
+  app.frame(13000);app.frame(13750);
+  const c=JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles'))[0];
+  assert.equal(c.source,'auto');
+  assert.equal(c.buzzElapsed,12000);
+  assert.equal(c.extraMs,2000);
+  assert.equal(c.elapsed,14000);
+  assert.equal(c.volume,0.35);
+  assert.equal(c.interrupted,false);
+});
+test('a short preliminary buzz is ignored and only full cycle gets correction',async()=>{
+  const app=boot(new Map([[profileKey,JSON.stringify(sampleProfile())]]));
+  app.element('flow').value='1,5';
+  await app.callback('microphone','click')();
+  await app.callback('autoStart','click')();
+  app.setAudio(-82);app.frame(1000);app.frame(1500);
+  app.setAudio(-105);app.frame(1670);app.frame(1920);
+  assert.equal(app.store.has('acoustic-mixture-counter-v1-cycles'),false);
+  app.setAudio(-82);
+  app.frame(2000);app.frame(2450);app.frame(12400);app.frame(14400);
+  app.setAudio(-105);app.frame(14500);app.frame(15250);
+  const cycles=JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles'));
+  assert.equal(cycles.length,1);
+  assert.equal(cycles[0].buzzElapsed,12500);
+  assert.equal(cycles[0].extraMs,2000);
+  assert.equal(cycles[0].elapsed,14500);
+  assert.equal(cycles[0].volume,1.5*14.5/60);
+});
+test('manual cycle gets zero correction and previous journal entry stays unchanged',()=>{
+  const old={elapsed:12500,flow:1.5,volume:0.3125,source:'auto'};
+  const app=boot(new Map([['acoustic-mixture-counter-v1-cycles',JSON.stringify([old])]]));
+  app.element('flow').value='1,5';
+  app.setClock(1000);app.callback('manualStart','click')();
+  app.setClock(13000);app.callback('manualStop','click')();
+  const cycles=JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles'));
+  assert.equal(cycles.length,2);
+  assert.deepEqual(cycles[0],old);
+  assert.equal(cycles[1].extraMs,0);
+  assert.equal(cycles[1].buzzElapsed,12000);
+  assert.equal(cycles[1].elapsed,12000);
+  assert.equal(cycles[1].volume,0.3);
+});
+test('interrupted automatic cycle is flagged and omits unobserved trailing second',async()=>{
+  const app=boot(new Map([[profileKey,JSON.stringify(sampleProfile())]]));
+  app.element('flow').value='1,5';
+  await app.callback('microphone','click')();
+  await app.callback('autoStart','click')();
+  app.setAudio(-82);
+  app.frame(1000);app.frame(1450);app.frame(11250);app.frame(13000);
+  app.setClock(13500);app.callback('autoStop','click')();
+  const c=JSON.parse(app.store.get('acoustic-mixture-counter-v1-cycles'))[0];
+  assert.equal(c.buzzElapsed,12500);
+  assert.equal(c.extraMs,1000);
+  assert.equal(c.elapsed,13500);
+  assert.equal(c.interrupted,true);
+});
