@@ -103,7 +103,7 @@
       </div>
       <div class="compensation">
         <div class="total-label">Коэффициент компенсации</div>
-        <div class="comp-value" id="compensationK">1,000000</div>
+        <div class="comp-value" id="compensationK">1</div>
         <div class="comp-rate" id="compensationPercent">+0,000 %</div>
       </div>
     </div>
@@ -113,7 +113,7 @@
       <div><div class="stat-label">Циклов завершено</div><div class="stat-value" id="cycles">0</div></div>
     </div>
     <div class="statebox">Текущий цикл: <strong id="currentVolume">0,000 л</strong><span id="cycleFlowInfo" class="small"></span></div>
-    <p class="footnote">Коэффициент компенсации растёт линейно на <strong>0,74 % каждые 10 л</strong>: K = 1 + 0,00074 × V, где V — суммарный объём в литрах. Коэффициент информационный, не изменяет объём. Для автоматического цикла время = жужжание + 2 с; ручной режим без временной поправки.</p>
+    <p class="footnote">Коэффициент компенсации: <strong>0 л → 1</strong>, <strong>5 л → 1,0365</strong>, <strong>10 л → 1,073</strong>. Линейная формула: K = 1 + 0,0073 × V, где V — суммарный объём в литрах. Коэффициент не изменяет объём смеси. Для автоматического цикла время = жужжание + 2 с; ручной режим без временной поправки.</p>
   </section>
 
   <section class="panel" aria-label="Параметры продувки">
@@ -182,8 +182,9 @@
   // Дополнительное время — только для ПОЛНОСТЬЮ завершённых автоматических циклов.
   const AUTO_LEAD_MS=1000, AUTO_TAIL_MS=1000;
   const AUTO_OFFSET_MS=AUTO_LEAD_MS+AUTO_TAIL_MS;
-  // 0,74 % на каждые 10 л: 0,00074 на каждый литр к множителю K.
-  const COMPENSATION_FACTOR_PER_LITER=0.0074/10;
+  // Контрольные точки: 0 л = 1; 5 л = 1,0365; 10 л = 1,073.
+  // Прирост K составляет 0,073 на 10 литров (0,0073 на 1 литр).
+  const COMPENSATION_FACTOR_PER_LITER=0.073/10;
   const compensationForVolume=liters=>1+Math.max(0,liters)*COMPENSATION_FACTOR_PER_LITER;
   let stream=null, context=null, analyser=null, source=null, values=null;
   let offProfile=null, onProfile=null, selectedBands=[];
@@ -301,7 +302,7 @@
     const totalVolume=t.volume+volume;
     el.total.textContent=decimal(totalVolume);
     const k=compensationForVolume(totalVolume);
-    el.compensationK.textContent=decimal(k,6);
+    el.compensationK.textContent=k.toLocaleString('ru-RU',{minimumFractionDigits:0,maximumFractionDigits:6});
     el.compensationPercent.textContent='+'+decimal((k-1)*100,3)+' %';
     el.sumTime.textContent=seconds(t.time+elapsed);
     el.currentTime.textContent=seconds(elapsed);
